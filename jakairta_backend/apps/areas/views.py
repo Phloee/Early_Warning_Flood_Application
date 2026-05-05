@@ -9,14 +9,18 @@ from .serializers import AreaSerializer, AreaListSerializer, SavedAreaSerializer
 
 
 @extend_schema(tags=['Areas'])
-class AreaListView(generics.ListAPIView):
-    """Daftar semua wilayah yang dipantau beserta status banjir"""
-    serializer_class = AreaListSerializer
+class AreaListCreateView(generics.ListCreateAPIView):
+    """Daftar semua wilayah yang dipantau beserta status banjir / Buat wilayah baru"""
     permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'district', 'sub_district']
     ordering_fields = ['name', 'district', 'status', 'water_level_cm', 'updated_at']
     ordering = ['district', 'name']
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return AreaSerializer
+        return AreaListSerializer
 
     def get_queryset(self):
         qs = Area.objects.filter(is_active=True)
@@ -30,11 +34,15 @@ class AreaListView(generics.ListAPIView):
 
 
 @extend_schema(tags=['Areas'])
-class AreaDetailView(generics.RetrieveAPIView):
-    """Detail wilayah spesifik"""
+class AreaRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    """Detail, Update, dan Hapus wilayah spesifik"""
     serializer_class = AreaSerializer
     permission_classes = [AllowAny]
     queryset = Area.objects.filter(is_active=True)
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.save()
 
 
 @extend_schema(tags=['Saved Areas'])

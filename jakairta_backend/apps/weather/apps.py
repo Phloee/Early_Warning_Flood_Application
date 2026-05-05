@@ -12,7 +12,7 @@ class WeatherConfig(AppConfig):
         # Hindari double-start di development (Django reload)
         if os.environ.get('RUN_MAIN') == 'true' or not os.environ.get('DJANGO_DEVELOPMENT'):
             try:
-                from apps.weather.scheduler import start_scheduler
+                from apps.weather.tasks import start_scheduler
                 start_scheduler()
             except Exception as e:
                 import logging

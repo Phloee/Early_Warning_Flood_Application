@@ -55,6 +55,7 @@ class WeatherForecast(models.Model):
     forecast_time = models.DateTimeField(help_text='Waktu yang diprakirakan')
     temperature = models.FloatField(null=True, blank=True)
     humidity = models.IntegerField(null=True, blank=True)
+    rainfall = models.FloatField(null=True, blank=True, help_text='Prediksi curah hujan mm/jam (ARIMA)')
     rainfall_probability = models.IntegerField(default=0, help_text='Probabilitas hujan 0-100%')
     description = models.CharField(max_length=255, blank=True)
     raw_data = models.JSONField(default=dict)

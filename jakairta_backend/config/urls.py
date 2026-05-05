@@ -6,6 +6,9 @@ urlpatterns = [
     # Django Admin
     path('admin/', admin.site.urls),
 
+    # Custom Developer Dashboard
+    path('dashboard/', include('apps.dashboard.urls')),
+
     # API Schema
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
@@ -18,3 +21,10 @@ urlpatterns = [
     path('api/cctv/', include('apps.cctv.urls')),
     path('api/notifications/', include('apps.notifications.urls')),
 ]
+
+from django.conf import settings
+from django.conf.urls.static import static
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

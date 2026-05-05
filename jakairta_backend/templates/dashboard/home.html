@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jakairta – Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    :root{
+      --bg:#1C1C1E;
+      --surface:#2C2C2E;
+      --surface2:#3A3A3C;
+      --border:rgba(255,255,255,0.08);
+      --primary:#3478F6;
+      --danger:#EF4444;
+      --warning:#F59E0B;
+      --success:#22C55E;
+      --text:#FFFFFF;
+      --muted:rgba(255,255,255,0.45);
+      --label:rgba(255,255,255,0.55);
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;}
+
+    /* Sidebar */
+    .sidebar{width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:100vh;position:fixed;top:0;left:0;bottom:0;}
+    .sb-logo{padding:24px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+    .sb-logo .icon{width:36px;height:36px;background:var(--primary);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .sb-logo .icon svg{width:18px;height:18px;fill:#fff;}
+    .sb-logo h2{font-size:16px;font-weight:800;letter-spacing:-0.3px;}
+    .sb-logo p{font-size:10px;color:var(--muted);margin-top:1px;}
+    .sb-nav{padding:16px 12px;flex:1;}
+    .sb-section{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:0.8px;text-transform:uppercase;padding:0 8px;margin:16px 0 6px;}
+    .sb-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;transition:all 0.15s;margin-bottom:2px;}
+    .sb-item:hover{background:rgba(255,255,255,0.06);color:var(--text);}
+    .sb-item.active{background:rgba(52,120,246,0.15);color:var(--primary);}
+    .sb-item svg{width:15px;height:15px;fill:currentColor;flex-shrink:0;}
+    .sb-footer{padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+    .sb-avatar{width:30px;height:30px;border-radius:8px;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+    .sb-footer .name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;}
+    .sb-footer .role{font-size:10px;color:var(--muted);}
+    .sb-logout{margin-left:auto;padding:4px 8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:6px;color:#FCA5A5;font-size:10px;font-weight:600;cursor:pointer;text-decoration:none;flex-shrink:0;transition:background 0.15s;}
+    .sb-logout:hover{background:rgba(239,68,68,0.18);}
+
+    /* Main */
+    .main{margin-left:220px;flex:1;padding:28px 32px;max-width:calc(100% - 220px);}
+    .topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;}
+    .topbar h1{font-size:22px;font-weight:800;letter-spacing:-0.5px;}
+    .topbar p{font-size:13px;color:var(--muted);margin-top:3px;}
+    .live-badge{display:flex;align-items:center;gap:7px;padding:6px 14px;border-radius:20px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#FCA5A5;font-size:11px;font-weight:600;letter-spacing:0.3px;flex-shrink:0;}
+    .live-dot{width:6px;height:6px;border-radius:50%;background:#EF4444;animation:pulse 1.5s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(.7);}}
+
+    /* Stats */
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;}
+    .stat{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px;}
+    .stat-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;}
+    .stat-val{font-size:30px;font-weight:800;letter-spacing:-1px;}
+    .c-primary{color:var(--primary);}
+    .c-danger{color:var(--danger);}
+    .c-warning{color:var(--warning);}
+    .c-success{color:var(--success);}
+
+    /* Section header */
+    .sec-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+    .sec-title{font-size:14px;font-weight:700;color:var(--text);}
+    .sec-line{flex:1;height:1px;background:var(--border);}
+    .sec-timer{font-size:11px;color:var(--muted);}
+
+    /* Area grid */
+    .areas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px;}
+
+    /* Area card */
+    .area-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;transition:transform 0.2s,box-shadow 0.2s;}
+    .area-card:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,0.25);}
+    .area-card.state-flood{border-color:rgba(239,68,68,0.35);}
+    .area-card.state-warning{border-color:rgba(245,158,11,0.35);}
+
+    .ac-header{padding:18px 18px 0;display:flex;align-items:flex-start;justify-content:space-between;}
+    .ac-name{font-size:15px;font-weight:700;}
+    .ac-district{font-size:12px;color:var(--muted);margin-top:2px;}
+    .pill{padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;flex-shrink:0;}
+    .pill-flood{background:rgba(239,68,68,0.12);color:#FCA5A5;border:1px solid rgba(239,68,68,0.25);}
+    .pill-warning{background:rgba(245,158,11,0.12);color:#FCD34D;border:1px solid rgba(245,158,11,0.25);}
+    .pill-safe{background:rgba(34,197,94,0.12);color:#86EFAC;border:1px solid rgba(34,197,94,0.25);}
+
+    /* Conditions row */
+    .ac-conditions{display:flex;gap:8px;padding:14px 18px;}
+    .cond{flex:1;padding:9px 11px;border-radius:10px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px;}
+    .cond-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+    .cond.met{background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);color:#86EFAC;}
+    .cond.met .cond-dot{background:var(--success);}
+    .cond.fail{background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--muted);}
+    .cond.fail .cond-dot{background:var(--surface2);}
+
+    /* CCTV */
+    .ac-cctv{margin:0 18px 14px;}
+    .cctv-box{width:100%;height:155px;border-radius:12px;background:#000;border:1px solid var(--border);overflow:hidden;position:relative;}
+    .cctv-box iframe{width:100%;height:100%;border:none;}
+    .cctv-live-tag{position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.75);display:flex;align-items:center;gap:5px;}
+    .rec{width:5px;height:5px;border-radius:50%;background:#EF4444;animation:pulse 1.5s infinite;}
+    .no-cam{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);}
+    .no-cam svg{width:28px;height:28px;fill:var(--muted);}
+    .no-cam span{font-size:12px;}
+
+    /* Footer */
+    .ac-footer{padding:0 18px 18px;}
+    .alert-btn{width:100%;padding:12px;border:none;border-radius:12px;font-size:13px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;transition:all 0.2s;letter-spacing:0.2px;}
+    .alert-btn.ready{background:var(--danger);color:#fff;}
+    .alert-btn.ready:hover{background:#DC2626;}
+    .alert-btn.not-ready{background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
+    .alert-btn.not-ready:hover{background:rgba(255,255,255,0.08);color:var(--text);}
+
+    /* Modal */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);display:none;z-index:200;align-items:center;justify-content:center;}
+    .overlay.show{display:flex;}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;width:440px;box-shadow:0 24px 60px rgba(0,0,0,0.5);animation:fadeUp .25s ease;}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+    .modal-title{font-size:17px;font-weight:700;margin-bottom:10px;}
+    .modal-body{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:24px;}
+    .modal-actions{display:flex;gap:10px;}
+    .mbtn{flex:1;padding:12px;border-radius:12px;border:none;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all 0.15s;}
+    .mbtn-cancel{background:var(--surface2);color:var(--text);}
+    .mbtn-cancel:hover{background:rgba(255,255,255,0.1);}
+    .mbtn-warn{background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.25);color:#FCD34D;}
+    .mbtn-warn:hover{background:rgba(245,158,11,0.25);}
+    .mbtn-confirm{background:var(--danger);color:#fff;}
+    .mbtn-confirm:hover{background:#DC2626;}
+    .mbtn-green{background:var(--success);color:#fff;}
+    .mbtn-green:hover{background:#16A34A;}
+
+    /* Type selector cards */
+    .type-selector{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;}
+    .type-card{background:var(--surface2);border:2px solid var(--border);border-radius:14px;padding:20px 16px;cursor:pointer;text-align:center;transition:all .2s;}
+    .type-card:hover{border-color:var(--primary);background:rgba(52,120,246,0.08);transform:translateY(-2px);}
+    .type-card.selected{border-color:var(--primary);background:rgba(52,120,246,0.12);}
+    .type-card.sim:hover{border-color:var(--warning);background:rgba(245,158,11,0.08);}
+    .type-card.sim.selected{border-color:var(--warning);background:rgba(245,158,11,0.10);}
+    .type-card .tc-icon{font-size:32px;margin-bottom:10px;}
+    .type-card .tc-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;}
+    .type-card .tc-desc{font-size:11px;color:var(--muted);line-height:1.5;}
+
+    /* Toast */
+    .toast{position:fixed;bottom:28px;right:28px;z-index:300;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:500;opacity:0;transform:translateY(20px);transition:all .35s ease;pointer-events:none;}
+    .toast.show{opacity:1;transform:translateY(0);}
+    .toast.success{background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86EFAC;}
+    .toast.error{background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#FCA5A5;}
+
+    .empty-state{text-align:center;padding:60px 20px;color:var(--muted);}
+    .empty-state a{color:var(--primary);text-decoration:none;font-weight:500;}
+    .last-update{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;}
+
+    /* Predict button */
+    .predict-btn{padding:8px 18px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:opacity .2s;margin-left:10px;}
+    .predict-btn:hover{opacity:.85;}
+    .predict-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+    /* Predict panel */
+    .predict-panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:24px;display:none;}
+    .predict-panel.show{display:block;}
+    .predict-summary{font-size:14px;font-weight:700;margin-bottom:14px;padding:10px 14px;border-radius:10px;}
+    .predict-summary.risk{background:rgba(239,68,68,0.12);color:#FCA5A5;border:1px solid rgba(239,68,68,0.2);}
+    .predict-summary.safe{background:rgba(34,197,94,0.12);color:#86EFAC;border:1px solid rgba(34,197,94,0.2);}
+    .forecast-table{width:100%;border-collapse:collapse;font-size:12px;}
+    .forecast-table th{text-align:left;color:var(--muted);font-weight:600;padding:6px 10px;border-bottom:1px solid var(--border);}
+    .forecast-table td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);}
+    .ft-safe{color:#86EFAC;} .ft-caution{color:#FCD34D;} .ft-warn{color:#FCA5A5;}
+
+    /* CCTV + analysis side layout */
+    .cctv-row{display:flex;gap:12px;margin:0 18px 14px;}
+    .cctv-col{flex:1;display:flex;flex-direction:column;gap:8px;}
+    .cctv-right{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;min-height:155px;}
+    .ai-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+    .ai-val{font-size:13px;font-weight:600;color:var(--text);}
+    .ai-val.danger{color:#FCA5A5;} .ai-val.warn{color:#FCD34D;} .ai-val.safe{color:#86EFAC;}
+    .ai-row{display:flex;flex-direction:column;gap:2px;}
+    .analyze-btn{margin-top:auto;padding:8px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:opacity .2s;}
+    .analyze-btn:hover{opacity:.85;}
+    .analyze-btn:disabled{opacity:.5;cursor:not-allowed;}
+    .ai-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .yolo-box {
+      position: absolute;
+      border: 3px solid #ff3b30;
+      box-sizing: border-box;
+      pointer-events: none;
+      background: rgba(255, 59, 48, 0.15);
+      transition: all 0.3s ease;
+    }
+    .yolo-label {
+      position: absolute;
+      top: -24px;
+      left: -3px;
+      background: #ff3b30;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px 4px 4px 0;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12c0 5.52 4.48 10 10 10s10-4.48 10-10S17.52 2 12 2zm0 14c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
+    </div>
+    <div>
+      <h2>Jakairta</h2>
+      <p>Command Center</p>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-section">Monitor</div>
+    <a href="#" class="sb-item active">
+      <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      Dashboard
+    </a>
+    <a href="/admin/areas/area/" class="sb-item">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      Wilayah
+    </a>
+    <a href="/admin/cctv/cctvcamera/" class="sb-item">
+      <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+      Kamera CCTV
+    </a>
+    <div class="sb-section">Kelola Data</div>
+    <a href="#" class="sb-item" onclick="openCrudPanel();return false;">
+      <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm6 12H6v-1c0-2 4-3.1 6-3.1s6 1.1 6 3.1v1z"/></svg>
+      Kelola Kamera & Video
+    </a>
+    <div class="sb-section">Data</div>
+    <a href="/admin/weather/weatherforecast/" class="sb-item">
+      <svg viewBox="0 0 24 24"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>
+      Prakiraan Cuaca
+    </a>
+    <a href="/admin/notifications/notification/" class="sb-item">
+      <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      Log Notifikasi
+    </a>
+  </nav>
+
+  <div class="sb-footer">
+    <div class="sb-avatar">{{ user.email|first|upper }}</div>
+    <div style="min-width:0">
+      <div class="name">{{ user.email }}</div>
+      <div class="role">Admin</div>
+    </div>
+    <a href="/dashboard/logout/" class="sb-logout">Keluar</a>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <h1>Flood Monitor</h1>
+      <p>Pantau kondisi wilayah dan kirim peringatan darurat</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="predict-btn" id="predictBtn" onclick="runPredict()">Prediksi Banjir (ARIMA)</button>
+      <div class="live-badge" id="autoAiBadge" style="cursor:pointer; background:rgba(34,197,94,0.15); border-color:rgba(34,197,94,0.3); color:#86EFAC;" onclick="toggleAutoAi()">
+        <div class="live-dot" id="autoAiDot" style="background:#22C55E;"></div><span id="autoAiText">Auto-AI: ON</span>
+      </div>
+      <div class="live-badge"><div class="live-dot"></div>Live</div>
+    </div>
+  </div>
+
+  <!-- ARIMA Predict Panel -->
+  <div class="predict-panel" id="predictPanel">
+    <div class="predict-summary" id="predictSummary">Memproses...</div>
+    <table class="forecast-table">
+      <thead><tr><th>Waktu</th><th>Curah Hujan</th><th>Intensitas</th><th>Suhu</th><th>Risiko</th></tr></thead>
+      <tbody id="forecastBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Total Wilayah</div>
+      <div class="stat-val c-primary">{{ stats.total_areas }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Banjir</div>
+      <div class="stat-val c-danger">{{ stats.flood_areas }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Siaga</div>
+      <div class="stat-val c-warning">{{ stats.warning_areas }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Aman</div>
+      <div class="stat-val c-success">{{ stats.safe_areas }}</div>
+    </div>
+  </div>
+
+  <!-- Section header -->
+  <div class="sec-header">
+    <span class="sec-title">Kondisi Wilayah</span>
+    <div class="sec-line"></div>
+    <button onclick="openAreaModal()" style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">+ Tambah Wilayah</button>
+  </div>
+
+  <!-- Area cards -->
+  <div class="areas-grid">
+    {% for d in areas_data %}
+    <!-- Card 1: CCTV Live -->
+    <div class="area-card {% if d.cctv_met and d.weather_met %}state-flood{% elif d.weather_met %}state-warning{% endif %}">
+      <div class="ac-header">
+        <div>
+          <div class="ac-name">{{ d.area.name }} <span style="font-size:12px;color:var(--muted);font-weight:500;">(Live)</span>
+              <button onclick="openAreaModal({{ d.area.id }})" style="background:rgba(52,120,246,0.15);color:var(--primary);border:none;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600;cursor:pointer;margin-left:8px;">Edit</button>
+              <button onclick="deleteArea({{ d.area.id }}, '{{ d.area.name|escapejs }}')" style="background:rgba(239,68,68,0.15);color:#FCA5A5;border:none;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600;cursor:pointer;margin-left:4px;">Del</button>
+            </div>
+          <div class="ac-district">{{ d.area.district }}</div>
+        </div>
+        <div class="pill {% if d.area.status == 'banjir' %}pill-flood{% elif d.area.status == 'potensial' %}pill-warning{% else %}pill-safe{% endif %}">
+          {{ d.area.status|upper }}
+        </div>
+      </div>
+
+      <div class="ac-conditions">
+        <div class="cond {% if d.weather_met %}met{% else %}fail{% endif %}">
+          <div class="cond-dot"></div>
+          Syarat 1 — Cuaca{% if d.weather_met %} ({{ d.rain_mm|floatformat:1 }} mm){% endif %}
+        </div>
+        <div class="cond {% if d.cctv_met %}met{% else %}fail{% endif %}">
+          <div class="cond-dot"></div>
+          Syarat 2 — CCTV{% if d.cctv_met %} (Banjir){% endif %}
+        </div>
+      </div>
+
+      <div class="cctv-row">
+        <!-- CCTV Asli -->
+        <div class="cctv-col">
+          <div class="cctv-box">
+            {% if d.cam_url %}
+              <div class="cctv-live-tag"><div class="rec"></div>Live</div>
+              <iframe src="{{ d.cam_url }}" allowfullscreen scrolling="no" loading="lazy"></iframe>
+              <div id="aiOverlayBoxes_{{ d.area.id }}_cctv" class="ai-overlay"></div>
+            {% else %}
+              <div class="no-cam">
+                <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                <span>Tidak ada kamera</span>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- AI Analysis Panel -->
+        <div class="cctv-right" id="aiPanel_{{ d.area.id }}_cctv">
+          <div class="ai-row"><div class="ai-label" style="color:var(--text);">Status Banjir</div><div class="ai-val" id="aiBanjir_{{ d.area.id }}_cctv" style="font-size:15px;font-weight:800;">—</div></div>
+          <div class="ai-row"><div class="ai-label">Status Genangan</div><div class="ai-val" id="aiWater_{{ d.area.id }}_cctv">Belum dianalisis</div></div>
+          <div class="ai-row"><div class="ai-label">Prediksi Hujan</div><div class="ai-val" id="aiRain_{{ d.area.id }}_cctv">—</div></div>
+          <div class="ai-row"><div class="ai-label">Area Tergenang</div><div class="ai-val" id="aiArea_{{ d.area.id }}_cctv">—</div></div>
+          <div class="ai-row"><div class="ai-label">Rekomendasi</div><div class="ai-val" id="aiRec_{{ d.area.id }}_cctv" style="font-size:11px;">—</div></div>
+          <div style="display:flex; gap:8px; margin-top:auto;">
+            {% if d.cam_id %}
+              <button class="analyze-btn" style="flex:1;" id="analyzeBtn_{{ d.area.id }}_cctv" onclick="runAnalyze({{ d.cam_id }}, {{ d.area.id }}, false, 'cctv')">Analisa CCTV</button>
+            {% else %}
+              <div class="analyzing-text">Tidak ada kamera</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="ac-footer">
+        <button
+          class="alert-btn {% if d.both_met %}ready{% else %}not-ready{% endif %}"
+          onclick="openAlert({{ d.area.id }}, '{{ d.area.name }}', {{ d.both_met|lower }})">
+          Kirim Peringatan Darurat
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 2: Video Simulasi -->
+    <div class="area-card" style="border-style:dashed;">
+      <div class="ac-header">
+        <div>
+          <div class="ac-name">{{ d.area.name }} <span style="font-size:12px;color:var(--warning);font-weight:500;">(Simulasi)</span></div>
+          <div class="ac-district">{{ d.area.district }}</div>
+        </div>
+        <div class="pill pill-warning">
+          MODE UJI COBA
+        </div>
+      </div>
+
+      <div class="ac-conditions">
+        <div class="cond fail" style="background:rgba(255,255,255,0.02); justify-content:center;">
+          Mode ini digunakan untuk tes AI YOLOv8 dari file video
+        </div>
+      </div>
+
+      <div class="cctv-row">
+        <!-- Video Simulasi -->
+        <div class="cctv-col">
+          <div class="cctv-box">
+            {% if d.sim_url %}
+              <div class="cctv-live-tag" style="background:rgba(52,120,246,0.8);">Simulasi</div>
+              <video src="{{ d.sim_url }}" style="width:100%; height:100%; object-fit:cover;" autoplay loop muted playsinline></video>
+              <div id="aiOverlayBoxes_{{ d.area.id }}_sim" class="ai-overlay"></div>
+            {% else %}
+              <div class="no-cam">
+                <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                <span>Belum ada simulasi</span>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- AI Analysis Panel -->
+        <div class="cctv-right" id="aiPanel_{{ d.area.id }}_sim">
+          <div class="ai-row"><div class="ai-label" style="color:var(--text);">Status Banjir</div><div class="ai-val" id="aiBanjir_{{ d.area.id }}_sim" style="font-size:15px;font-weight:800;">—</div></div>
+          <div class="ai-row"><div class="ai-label">Status Genangan</div><div class="ai-val" id="aiWater_{{ d.area.id }}_sim">Belum dianalisis</div></div>
+          <div class="ai-row"><div class="ai-label">Prediksi Hujan</div><div class="ai-val" id="aiRain_{{ d.area.id }}_sim">—</div></div>
+          <div class="ai-row"><div class="ai-label">Area Tergenang</div><div class="ai-val" id="aiArea_{{ d.area.id }}_sim">—</div></div>
+          <div class="ai-row"><div class="ai-label">Rekomendasi</div><div class="ai-val" id="aiRec_{{ d.area.id }}_sim" style="font-size:11px;">—</div></div>
+          <div style="display:flex; gap:8px; margin-top:auto;">
+            {% if d.sim_id %}
+              <button class="analyze-btn" style="flex:1; background:var(--warning);" id="analyzeBtn_{{ d.area.id }}_sim" onclick="runAnalyze({{ d.sim_id }}, {{ d.area.id }}, true, 'sim')">Analisa Simulasi</button>
+            {% else %}
+              <div class="analyzing-text">Tidak ada simulasi</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="ac-footer">
+        <button
+          class="alert-btn not-ready"
+          onclick="openAlert({{ d.area.id }}, '{{ d.area.name }} (Simulasi)', true)">
+          Test Peringatan Darurat
+        </button>
+      </div>
+    </div>
+    {% empty %}
+      <div class="empty-state">
+        Belum ada data wilayah. <a href="/admin/areas/area/add/">Tambah wilayah baru</a>
+      </div>
+    {% endfor %}
+  </div>
+
+  <p class="last-update">Terakhir diperbarui: <span id="last-time">—</span></p>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       PANEL CRUD — Kelola Kamera & Video Simulasi
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="crudPanel" style="display:none;margin-top:32px;">
+    <div class="sec-header" style="margin-bottom:20px;">
+      <span class="sec-title" style="font-size:16px;">⚙️ Kelola Kamera & Video Simulasi</span>
+      <div class="sec-line"></div>
+      <button onclick="document.getElementById('crudPanel').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;">✕</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+      <!-- ── Kamera CCTV ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h3 style="font-size:14px;font-weight:700;">📹 Kamera CCTV Jalanan</h3>
+          <button onclick="openAddModal('cam')" style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">+ Tambah Baru</button>
+        </div>
+        <div id="camList" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="color:var(--muted);font-size:13px;">Memuat...</div>
+        </div>
+      </div>
+
+      <!-- ── Video Simulasi ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h3 style="font-size:14px;font-weight:700;">🎬 Video Simulasi AI</h3>
+          <button onclick="openAddModal('sim')" style="background:var(--warning);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">+ Tambah Baru</button>
+        </div>
+        <div id="simList" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="color:var(--muted);font-size:13px;">Memuat...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- Modal -->
+<div class="overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Konfirmasi</div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  let currentId = null;
+  const csrf = '{{ csrf_token }}';
+
+  // ── Alert Modal ──
+  function openAlert(id, name, ready) {
+    currentId = id;
+    const title = document.getElementById('modal-title');
+    const body  = document.getElementById('modal-body');
+    const acts  = document.getElementById('modal-actions');
+    if (ready) {
+      title.textContent = 'Kirim Peringatan Darurat';
+      body.textContent  = `Semua syarat terpenuhi untuk wilayah "${name}". Konfirmasi?`;
+      acts.innerHTML = `<button class="mbtn mbtn-cancel" onclick="closeModal()">Batal</button><button class="mbtn mbtn-confirm" onclick="doSend(false)">Kirim Sekarang</button>`;
+    } else {
+      title.textContent = 'Syarat Belum Terpenuhi';
+      body.innerHTML    = `Tidak semua syarat terpenuhi untuk <strong>${name}</strong>.<br>Tetap kirim secara paksa?`;
+      acts.innerHTML = `<button class="mbtn mbtn-cancel" onclick="closeModal()">Batal</button><button class="mbtn mbtn-warn" onclick="doSend(true)">Paksa Kirim</button>`;
+    }
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('show'); currentId = null; }
+  function doSend(force) {
+    if (!currentId) return; closeModal();
+    const fd = new FormData();
+    fd.append('force', force ? 'true' : 'false');
+    fd.append('csrfmiddlewaretoken', csrf);
+    fetch(`/dashboard/alert/${currentId}/`, {method:'POST', body:fd})
+      .then(r=>r.json()).then(d=>{ showToast(d.message, d.success?'success':'error'); if(d.success) setTimeout(()=>location.reload(),2000); })
+      .catch(()=>showToast('Gagal terhubung ke server.','error'));
+  }
+
+  // ── ARIMA Predict ──
+  function runPredict() {
+    const btn = document.getElementById('predictBtn');
+    const panel = document.getElementById('predictPanel');
+    const summary = document.getElementById('predictSummary');
+    const tbody = document.getElementById('forecastBody');
+    btn.disabled = true; btn.textContent = 'Memproses...';
+    panel.classList.add('show');
+    summary.textContent = 'Model ARIMA sedang menghitung prediksi curah hujan 5 jam ke depan...';
+    summary.className = 'predict-summary';
+    tbody.innerHTML = '';
+    const fd = new FormData(); fd.append('csrfmiddlewaretoken', csrf);
+    fetch('/dashboard/predict/', {method:'POST', body:fd})
+      .then(r=>r.json())
+      .then(d=>{
+        btn.disabled = false; btn.textContent = 'Prediksi Banjir (ARIMA)';
+        if (!d.success) { summary.textContent = 'Gagal: ' + d.message; return; }
+        summary.textContent = d.summary;
+        summary.className = 'predict-summary ' + (d.flood_risk ? 'risk' : 'safe');
+        tbody.innerHTML = d.forecasts.map(f=>{
+          const cls = f.risk==='KRITIS'||f.risk==='SIAGA' ? 'ft-warn' : f.risk==='WASPADA' ? 'ft-caution' : 'ft-safe';
+          return `<tr><td>${f.date} ${f.time}</td><td>${f.rainfall} mm/jam</td><td>${f.intensity}</td><td>${f.temperature}°C</td><td class="${cls}">${f.risk}</td></tr>`;
+        }).join('');
+      })
+      .catch(()=>{ btn.disabled=false; btn.textContent='Prediksi Banjir (ARIMA)'; showToast('Gagal menghubungi server.','error'); });
+  }
+
+  // ── YOLOv8 Analyze ──
+  function runAnalyze(camId, areaId, isSim, suffix) {
+    const btn = document.getElementById(`analyzeBtn_${areaId}_${suffix}`);
+    btn.disabled = true; btn.textContent = 'Menganalisa...';
+    document.getElementById(`aiWater_${areaId}_${suffix}`).textContent = 'Mengambil frame...';
+    const fd = new FormData(); fd.append('csrfmiddlewaretoken', csrf);
+    
+    const url = isSim ? `/dashboard/analyze_sim/${camId}/` : `/dashboard/analyze/${camId}/`;
+    
+    fetch(url, {method:'POST', body:fd})
+      .then(r=>r.json())
+      .then(d=>{
+        btn.disabled = false; btn.textContent = isSim ? 'Analisa Simulasi Ulang' : 'Analisa CCTV Ulang';
+        if (!d.success) { document.getElementById(`aiWater_${areaId}_${suffix}`).textContent = 'Gagal: '+d.message; return; }
+        const riskClass = d.risk_level==='critical'?'danger':d.risk_level==='warning'||d.risk_level==='caution'?'warn':'safe';
+        
+        document.getElementById(`aiBanjir_${areaId}_${suffix}`).textContent = d.status_banjir;
+        let banjirClass = 'safe';
+        if (d.status_banjir.includes('BANJIR') && !d.status_banjir.includes('TIDAK')) banjirClass = 'danger';
+        else if (d.status_banjir.includes('GENANGAN')) banjirClass = 'warn';
+        document.getElementById(`aiBanjir_${areaId}_${suffix}`).className = `ai-val ${banjirClass}`;
+        
+        document.getElementById(`aiWater_${areaId}_${suffix}`).textContent = d.has_water ? `Terdeteksi (${d.water_area_ratio}%)` : 'Tidak Ada Genangan';
+        document.getElementById(`aiWater_${areaId}_${suffix}`).className = `ai-val ${d.has_water ? (d.water_area_ratio>15?'danger':'warn') : 'safe'}`;
+        document.getElementById(`aiRain_${areaId}_${suffix}`).textContent = d.rain_intensity;
+        document.getElementById(`aiArea_${areaId}_${suffix}`).textContent = d.water_level_text;
+        document.getElementById(`aiRec_${areaId}_${suffix}`).textContent = d.recommendation;
+        document.getElementById(`aiRec_${areaId}_${suffix}`).className = `ai-val ${riskClass}`;
+
+        const overlay = document.getElementById(`aiOverlayBoxes_${areaId}_${suffix}`);
+        if(overlay) {
+            overlay.innerHTML = '';
+            if (d.detections && d.detections.length > 0) {
+                d.detections.forEach(det => {
+                    if(det.box) {
+                        const boxEl = document.createElement('div');
+                        const isGrass = det.class === 'grass_submerged';
+                        boxEl.className = 'yolo-box';
+                        boxEl.style.left   = det.box.x + '%';
+                        boxEl.style.top    = det.box.y + '%';
+                        boxEl.style.width  = det.box.w + '%';
+                        boxEl.style.height = det.box.h + '%';
+                        if (isGrass) {
+                            // Kotak patokan rumput = hijau dashed
+                            boxEl.style.borderColor  = '#22C55E';
+                            boxEl.style.borderStyle  = 'dashed';
+                            boxEl.style.borderWidth  = '2px';
+                            boxEl.style.background   = 'rgba(34,197,94,0.08)';
+                        }
+                        const labelEl = document.createElement('div');
+                        labelEl.className = 'yolo-label';
+                        if (isGrass) {
+                            labelEl.style.background = 'rgba(220,38,38,0.85)';
+                            labelEl.textContent = det.label || `Rumput Tenggelam ${det.confidence}%`;
+                        } else {
+                            labelEl.textContent = `${det.class} ${det.confidence}%`;
+                        }
+                        boxEl.appendChild(labelEl);
+                        overlay.appendChild(boxEl);
+                    }
+                });
+
+                // Tambahkan zona rumput patokan sebagai kotak hijau jika ada
+                if (isSim && d.grass_reference && d.grass_reference.found && d.grass_reference.zone) {
+                    const gz = d.grass_reference.zone;
+                    const grassBox = document.createElement('div');
+                    grassBox.className = 'yolo-box';
+                    grassBox.style.left   = gz.x + '%';
+                    grassBox.style.top    = gz.y + '%';
+                    grassBox.style.width  = gz.w + '%';
+                    grassBox.style.height = gz.h + '%';
+                    grassBox.style.borderColor = d.grass_reference.submerged ? '#EF4444' : '#22C55E';
+                    grassBox.style.borderStyle = 'dotted';
+                    grassBox.style.borderWidth = '3px';
+                    grassBox.style.background  = d.grass_reference.submerged ? 'rgba(239,68,68,0.06)' : 'rgba(34,197,94,0.06)';
+                    const grassLabel = document.createElement('div');
+                    grassLabel.className = 'yolo-label';
+                    grassLabel.style.background = d.grass_reference.submerged ? 'rgba(220,38,38,0.9)' : 'rgba(22,163,74,0.9)';
+                    grassLabel.textContent = d.grass_reference.submerged
+                        ? `🌊 Rumput Tenggelam (${d.grass_reference.water_pct}% air)`
+                        : `🌿 Patokan Aman (${d.grass_reference.green_pct}% hijau)`;
+                    grassBox.appendChild(grassLabel);
+                    overlay.appendChild(grassBox);
+                }
+            }
+        }
+
+        // Tampilkan status patokan rumput di panel AI (khusus simulasi)
+        if (isSim && d.grass_reference) {
+            const gr = d.grass_reference;
+            const grassPanel = document.getElementById(`grassStatus_${areaId}_sim`);
+            if (grassPanel) {
+                if (!gr.found) {
+                    grassPanel.innerHTML = '<span style="color:var(--muted);font-size:11px;">🌱 Rumput patokan tidak terdeteksi di video ini</span>';
+                } else if (gr.submerged) {
+                    grassPanel.innerHTML = `<span style="color:#FCA5A5;font-size:11px;font-weight:700;">🌊 RUMPUT TENGGELAM — ${gr.water_pct}% air di zona patokan</span>`;
+                } else {
+                    grassPanel.innerHTML = `<span style="color:#86EFAC;font-size:11px;">🌿 Rumput aman — ${gr.green_pct}% masih hijau</span>`;
+                }
+            }
+        }
+
+        showToast(`Analisis selesai (${d.analyzed_at}) — ${d.total_objects} objek terdeteksi`, 'success');
+      })
+      .catch(()=>{ btn.disabled=false; btn.textContent=isSim ? 'Analisa Simulasi' : 'Analisa CCTV'; showToast('Gagal analisis kamera.','error'); });
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = `toast ${type} show`;
+    setTimeout(()=>t.className='toast', 4000);
+  }
+
+  // Update jam saja, tanpa auto-refresh
+  setInterval(()=>{
+    document.getElementById('last-time').textContent = new Date().toLocaleTimeString('id-ID');
+  }, 1000);
+
+  document.getElementById('modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });
+
+  // ── Auto-Analyze Loop ──
+  let autoAiEnabled = true;
+  const camerasToAnalyze = [
+    {% for d in areas_data %}
+      {% if d.cam_id %}{ camId: {{ d.cam_id }}, areaId: {{ d.area.id }}, isSim: false, suffix: 'cctv' },{% endif %}
+      {% if d.sim_id %}{ camId: {{ d.sim_id }}, areaId: {{ d.area.id }}, isSim: true, suffix: 'sim' },{% endif %}
+    {% endfor %}
+  ];
+
+  function toggleAutoAi() {
+    autoAiEnabled = !autoAiEnabled;
+    const badge = document.getElementById('autoAiBadge');
+    const dot = document.getElementById('autoAiDot');
+    const txt = document.getElementById('autoAiText');
+    if (autoAiEnabled) {
+      badge.style.background = 'rgba(34,197,94,0.15)';
+      badge.style.borderColor = 'rgba(34,197,94,0.3)';
+      badge.style.color = '#86EFAC';
+      dot.style.background = '#22C55E';
+      dot.style.animation = 'pulse 1.5s infinite';
+      txt.textContent = 'Auto-AI: ON';
+      showToast('Sistem Auto-AI diaktifkan', 'success');
+      runAutoAnalyzeLoop();
+    } else {
+      badge.style.background = 'rgba(255,255,255,0.1)';
+      badge.style.borderColor = 'rgba(255,255,255,0.2)';
+      badge.style.color = '#FFF';
+      dot.style.background = 'var(--muted)';
+      dot.style.animation = 'none';
+      txt.textContent = 'Auto-AI: OFF';
+      showToast('Sistem Auto-AI dimatikan', 'warning');
+    }
+  }
+
+  async function runAutoAnalyzeLoop() {
+    if (!autoAiEnabled || camerasToAnalyze.length === 0) return;
+    
+    for (const cam of camerasToAnalyze) {
+      if (!autoAiEnabled) break;
+      
+      // Update UI untuk menunjukkan sedang menganalisa
+      document.getElementById(`aiWater_${cam.areaId}_${cam.suffix}`).textContent = 'Auto-AI Memproses...';
+      const btn = document.getElementById(`analyzeBtn_${cam.areaId}_${cam.suffix}`);
+      if(btn) { btn.disabled = true; btn.textContent = 'Auto-Scanning...'; }
+      
+      try {
+        const fd = new FormData(); fd.append('csrfmiddlewaretoken', csrf);
+        const url = cam.isSim ? `/dashboard/analyze_sim/${cam.camId}/` : `/dashboard/analyze/${cam.camId}/`;
+        
+        const r = await fetch(url, {method:'POST', body:fd});
+        const d = await r.json();
+        
+        if (btn) { btn.disabled = false; btn.textContent = cam.isSim ? 'Analisa Simulasi Manual' : 'Analisa CCTV Manual'; }
+        
+        if (d.success) {
+          const riskClass = d.risk_level==='critical'?'danger':d.risk_level==='warning'||d.risk_level==='caution'?'warn':'safe';
+          
+          document.getElementById(`aiBanjir_${cam.areaId}_${cam.suffix}`).textContent = d.status_banjir;
+          let banjirClass = 'safe';
+          if (d.status_banjir.includes('BANJIR') && !d.status_banjir.includes('TIDAK')) banjirClass = 'danger';
+          else if (d.status_banjir.includes('GENANGAN')) banjirClass = 'warn';
+          document.getElementById(`aiBanjir_${cam.areaId}_${cam.suffix}`).className = `ai-val ${banjirClass}`;
+          
+          document.getElementById(`aiWater_${cam.areaId}_${cam.suffix}`).textContent = d.has_water ? `Terdeteksi (${d.water_area_ratio}%)` : 'Tidak Ada Genangan';
+          document.getElementById(`aiWater_${cam.areaId}_${cam.suffix}`).className = `ai-val ${d.has_water ? (d.water_area_ratio>15?'danger':'warn') : 'safe'}`;
+          document.getElementById(`aiRain_${cam.areaId}_${cam.suffix}`).textContent = d.rain_intensity;
+          document.getElementById(`aiArea_${cam.areaId}_${cam.suffix}`).textContent = d.water_level_text;
+          document.getElementById(`aiRec_${cam.areaId}_${cam.suffix}`).textContent = d.recommendation;
+          document.getElementById(`aiRec_${cam.areaId}_${cam.suffix}`).className = `ai-val ${riskClass}`;
+
+          const overlay = document.getElementById(`aiOverlayBoxes_${cam.areaId}_${cam.suffix}`);
+          if(overlay) {
+              overlay.innerHTML = '';
+              if (d.detections && d.detections.length > 0) {
+                  d.detections.forEach(det => {
+                      if(det.box) {
+                          const boxEl = document.createElement('div');
+                          boxEl.className = 'yolo-box';
+                          boxEl.style.left = det.box.x + '%';
+                          boxEl.style.top = det.box.y + '%';
+                          boxEl.style.width = det.box.w + '%';
+                          boxEl.style.height = det.box.h + '%';
+                          
+                          const labelEl = document.createElement('div');
+                          labelEl.className = 'yolo-label';
+                          labelEl.textContent = `${det.class} ${det.confidence}%`;
+                          boxEl.appendChild(labelEl);
+                          
+                          overlay.appendChild(boxEl);
+                      }
+                  });
+              }
+          }
+        }
+      } catch (e) {
+        console.error("Auto-analyze failed for", cam, e);
+        if (btn) { btn.disabled = false; btn.textContent = cam.isSim ? 'Analisa Simulasi Manual' : 'Analisa CCTV Manual'; }
+      }
+      
+      // Jeda 3 detik sebelum AI pindah memindai kamera berikutnya
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    
+    // Ulangi dari awal setelah 5 detik agar tidak membebani memori / CPU
+    if (autoAiEnabled) {
+      setTimeout(runAutoAnalyzeLoop, 5000);
+    }
+  }
+
+  // Mulai otomatis setelah halaman dimuat
+  setTimeout(() => {
+    runAutoAnalyzeLoop();
+  }, 1000);
+
+  // ═══════════════════════════ CRUD ═══════════════════════════
+  const AREAS_DATA = [{% for area in areas_data %}{ id: {{ area.area.id }}, name: "{{ area.area.name|escapejs }}" },{% endfor %}];
+  function openCrudPanel() {
+    const panel = document.getElementById('crudPanel');
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth' });
+    loadCamList();
+    loadSimList();
+  }
+  const CAM_IDS = [{% for d in areas_data %}{% if d.cam_id %}{{ d.cam_id }},{% endif %}{% endfor %}];
+  const SIM_IDS = [{% for d in areas_data %}{% if d.sim_id %}{{ d.sim_id }},{% endif %}{% endfor %}];
+
+  // ── Modal Pemilih Tipe (CCTV vs Simulasi) ──
+  let _selectedAddType = null;
+
+  function openAddModal(preselect=null) {
+    _selectedAddType = preselect;
+    document.getElementById('modal-title').textContent = 'Tambah Data Baru';
+    document.getElementById('modal-body').innerHTML = `
+      <p style="font-size:13px;color:var(--muted);margin-bottom:4px;">Pilih jenis data yang ingin kamu tambahkan:</p>
+      <div class="type-selector">
+        <div class="type-card" id="typeCardCam" onclick="selectAddType('cam')">
+          <div class="tc-icon">📹</div>
+          <div class="tc-title">CCTV Jalanan</div>
+          <div class="tc-desc">Tambah kamera CCTV live dari URL embed / stream RTSP</div>
+        </div>
+        <div class="type-card sim" id="typeCardSim" onclick="selectAddType('sim')">
+          <div class="tc-icon">🎬</div>
+          <div class="tc-title">Video Simulasi</div>
+          <div class="tc-desc">Upload file video MP4 untuk dianalisis oleh AI YOLOv8</div>
+        </div>
+      </div>`;
+    document.getElementById('modal-actions').innerHTML =
+      `<button class="mbtn mbtn-cancel" onclick="closeModal()">Batal</button>
+       <button class="mbtn mbtn-confirm" id="btnNextType" onclick="confirmAddType()" style="opacity:.5;cursor:not-allowed;" disabled>Lanjut →</button>`;
+    document.getElementById('modal').classList.add('show');
+
+    // Pre-select jika sudah diketahui
+    if (preselect) selectAddType(preselect);
+  }
+
+  function selectAddType(type) {
+    _selectedAddType = type;
+    document.querySelectorAll('.type-card').forEach(el => el.classList.remove('selected'));
+    const card = document.getElementById(type === 'cam' ? 'typeCardCam' : 'typeCardSim');
+    if (card) card.classList.add('selected');
+    const btn = document.getElementById('btnNextType');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.style.background = type === 'sim' ? 'var(--warning)' : 'var(--primary)';
+    btn.style.color = type === 'sim' ? '#000' : '#fff';
+  }
+
+  function confirmAddType() {
+    if (!_selectedAddType) return;
+    closeModal();
+    setTimeout(() => {
+      if (_selectedAddType === 'cam') openCamModal();
+      else openSimModal();
+    }, 150);
+  }
+
+  function renderCamItem(d) {
+    const activeStyle = d.is_active ? 'background:rgba(34,197,94,.15);color:#86EFAC;' : 'background:rgba(255,255,255,.06);color:var(--muted);';
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${d.name}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.stream_url||'Tidak ada URL'}</div>
+        <span style="font-size:10px;padding:2px 7px;border-radius:8px;margin-top:4px;display:inline-block;${activeStyle}">${d.is_active?'Aktif':'Nonaktif'}</span>
+      </div>
+      <button onclick="openCamModal(${d.id})" style="background:rgba(52,120,246,.15);color:var(--primary);border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;">Edit</button>
+      <button onclick="deleteCam(${d.id},${JSON.stringify(d.name)})" style="background:rgba(239,68,68,.12);color:#FCA5A5;border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;">Hapus</button>
+    </div>`;
+  }
+
+  function renderSimItem(d) {
+    const fname = d.video_file ? d.video_file.split('/').pop() : 'Tidak ada file';
+    const activeStyle = d.is_active ? 'background:rgba(34,197,94,.15);color:#86EFAC;' : 'background:rgba(255,255,255,.06);color:var(--muted);';
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${d.title}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">🎬 ${fname}</div>
+        <span style="font-size:10px;padding:2px 7px;border-radius:8px;margin-top:4px;display:inline-block;${activeStyle}">${d.is_active?'Aktif':'Nonaktif'}</span>
+      </div>
+      <button onclick="openSimModal(${d.id})" style="background:rgba(52,120,246,.15);color:var(--primary);border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;">Edit</button>
+      <button onclick="deleteSim(${d.id},${JSON.stringify(d.title)})" style="background:rgba(239,68,68,.12);color:#FCA5A5;border:none;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;">Hapus</button>
+    </div>`;
+  }
+
+  async function loadCamList() {
+    const el = document.getElementById('camList');
+    if (!CAM_IDS.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;">Belum ada kamera. Klik &quot;+ Tambah Kamera&quot;</div>'; return; }
+    let html = '';
+    for (const id of CAM_IDS) {
+      const d = await fetch(`/dashboard/camera/${id}/edit/`).then(r=>r.json()).catch(()=>null);
+      if (d && d.id) html += renderCamItem(d);
+    }
+    el.innerHTML = html || '<div style="color:var(--muted);">Tidak ada data.</div>';
+  }
+
+  async function loadSimList() {
+    const el = document.getElementById('simList');
+    if (!SIM_IDS.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;">Belum ada video. Klik &quot;+ Tambah Video&quot;</div>'; return; }
+    let html = '';
+    for (const id of SIM_IDS) {
+      const d = await fetch(`/dashboard/sim/${id}/edit/`).then(r=>r.json()).catch(()=>null);
+      if (d && d.id) html += renderSimItem(d);
+    }
+    el.innerHTML = html || '<div style="color:var(--muted);">Tidak ada data.</div>';
+  }
+
+  function areaOpts(sel) {
+    return AREAS_DATA.map(a=>`<option value="${a.id}"${sel==a.id?' selected':''}>${a.name}</option>`).join('');
+  }
+
+  function openCamModal(id=null) {
+    const isEdit = !!id;
+    document.getElementById('modal-title').innerHTML =
+      (isEdit ? '' : `<span onclick="openAddModal('cam')" style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:500;display:block;margin-bottom:6px;">← Kembali pilih tipe</span>`) +
+      `<span>📹 ${isEdit ? 'Edit' : 'Tambah'} Kamera CCTV Jalanan</span>`;
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:11px;margin-top:6px;">
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">NAMA KAMERA *</label>
+          <input id="camName" placeholder="contoh: CCTV Cipinang-001" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;"></div>
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">WILAYAH</label>
+          <select id="camArea" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;">
+            <option value="">-- Pilih Wilayah --</option>${areaOpts('')}</select></div>
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">URL EMBED / STREAM CCTV</label>
+          <input id="camUrl" placeholder="https://cctv.balitower.co.id/.../embed.html" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;">
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Paste URL embed dari Bali Tower, Windmill, atau provider CCTV lain</div></div>
+        <div style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="camActive" checked style="width:15px;height:15px;accent-color:var(--primary);">
+          <label for="camActive" style="font-size:13px;cursor:pointer;">Aktifkan kamera ini</label></div>
+      </div>`;
+    document.getElementById('modal-actions').innerHTML =
+      `<button class="mbtn mbtn-cancel" onclick="closeModal()">Batal</button>
+       <button class="mbtn mbtn-confirm" onclick="saveCam(${id||'null'})">💾 Simpan</button>`;
+    document.getElementById('modal').classList.add('show');
+    if (id) fetch(`/dashboard/camera/${id}/edit/`).then(r=>r.json()).then(d=>{
+      document.getElementById('camName').value = d.name;
+      document.getElementById('camArea').value = d.area_id||'';
+      document.getElementById('camUrl').value = d.stream_url||'';
+      document.getElementById('camActive').checked = d.is_active;
+    });
+  }
+
+  async function saveCam(id) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', csrf);
+    fd.append('name', document.getElementById('camName').value);
+    fd.append('area_id', document.getElementById('camArea').value);
+    fd.append('stream_url', document.getElementById('camUrl').value);
+    fd.append('is_active', document.getElementById('camActive').checked?'1':'0');
+    const url = id ? `/dashboard/camera/${id}/edit/` : '/dashboard/camera/add/';
+    const res = await fetch(url,{method:'POST',body:fd}).then(r=>r.json());
+    closeModal(); showToast(res.message, res.success?'success':'error');
+    if (res.success) setTimeout(()=>location.reload(), 1200);
+  }
+
+  async function deleteCam(id, name) {
+    if (!confirm(`Hapus kamera "${name}"?`)) return;
+    const fd = new FormData(); fd.append('csrfmiddlewaretoken', csrf);
+    const res = await fetch(`/dashboard/camera/${id}/delete/`,{method:'POST',body:fd}).then(r=>r.json());
+    showToast(res.message, res.success?'success':'error');
+    if (res.success) setTimeout(()=>location.reload(), 1200);
+  }
+
+  function openSimModal(id=null) {
+    const isEdit = !!id;
+    document.getElementById('modal-title').innerHTML =
+      (isEdit ? '' : `<span onclick="openAddModal('sim')" style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:500;display:block;margin-bottom:6px;">← Kembali pilih tipe</span>`) +
+      `<span>🎬 ${isEdit ? 'Edit' : 'Upload'} Video Simulasi AI</span>`;
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:11px;margin-top:6px;">
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">JUDUL VIDEO *</label>
+          <input id="simTitle" placeholder="contoh: Banjir Jakarta 2024" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;"></div>
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">WILAYAH</label>
+          <select id="simArea" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;">
+            <option value="">-- Pilih Wilayah --</option>${areaOpts('')}</select></div>
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">FILE VIDEO (MP4)</label>
+          <input type="file" id="simFile" accept="video/mp4,video/*" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid rgba(245,158,11,.4);border-radius:8px;color:#fff;font-size:12px;font-family:Inter,sans-serif;cursor:pointer;">
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Format yang didukung: MP4, AVI, MKV. Max 200MB.</div></div>
+        <div style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="simActive" checked style="width:15px;height:15px;accent-color:var(--warning);">
+          <label for="simActive" style="font-size:13px;cursor:pointer;">Aktifkan simulasi ini</label></div>
+      </div>`;
+    document.getElementById('modal-actions').innerHTML =
+      `<button class="mbtn mbtn-cancel" onclick="closeModal()">Batal</button>
+       <button class="mbtn" style="background:var(--warning);color:#000;font-weight:700;" onclick="saveSim(${id||'null'})">💾 Simpan</button>`;
+    document.getElementById('modal').classList.add('show');
+    if (id) fetch(`/dashboard/sim/${id}/edit/`).then(r=>r.json()).then(d=>{
+      document.getElementById('simTitle').value = d.title;
+      document.getElementById('simArea').value = d.area_id||'';
+      document.getElementById('simActive').checked = d.is_active;
+    });
+  }
+
+  async function saveSim(id) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', csrf);
+    fd.append('title', document.getElementById('simTitle').value);
+    fd.append('area_id', document.getElementById('simArea').value);
+    fd.append('is_active', document.getElementById('simActive').checked?'1':'0');
+    const f = document.getElementById('simFile');
+    if (f.files.length > 0) fd.append('video_file', f.files[0]);
+    const url = id ? `/dashboard/sim/${id}/edit/` : '/dashboard/sim/add/';
+    closeModal(); showToast('Menyimpan...', 'success');
+    const res = await fetch(url,{method:'POST',body:fd}).then(r=>r.json());
+    showToast(res.message, res.success?'success':'error');
+    if (res.success) setTimeout(()=>location.reload(), 1500);
+  }
+
+  async function deleteSim(id, title) {
+    if (!confirm(`Hapus video "${title}"?`)) return;
+    const fd = new FormData(); fd.append('csrfmiddlewaretoken', csrf);
+    const res = await fetch(`/dashboard/sim/${id}/delete/`,{method:'POST',body:fd}).then(r=>r.json());
+    showToast(res.message, res.success?'success':'error');
+    if (res.success) setTimeout(()=>location.reload(), 1200);
+  }
+
+
+  
+  function openAreaModal(id=null) {
+    document.getElementById('modal-title').textContent = id ? 'Edit Wilayah' : 'Tambah Wilayah';
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:11px;margin-top:6px;">
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">NAMA WILAYAH *</label>
+          <input id="areaName" placeholder="contoh: Kampung Melayu" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;"></div>
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">KOTA / KABUPATEN *</label>
+          <input id="areaDistrict" placeholder="contoh: Jakarta Timur" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;"></div>
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;"><label style="font-size:11px;color:var(--muted);font-weight:600;">LATITUDE</label>
+            <input id="areaLat" value="-6.200000" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;"></div>
+          <div style="flex:1;"><label style="font-size:11px;color:var(--muted);font-weight:600;">LONGITUDE</label>
+            <input id="areaLon" value="106.816666" style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;"></div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);font-weight:600;">URL CCTV (HTML/Embed) (Opsional)</label>
+          <input id="areaCctvUrl" placeholder="https://..." style="width:100%;margin-top:4px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:Inter,sans-serif;">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Jika diisi, CCTV otomatis ditambahkan ke wilayah ini.</div>
+        </div>
+      </div>`;
+    document.getElementById('modal-actions').innerHTML = `<button class="mbtn mbtn-cancel" onclick="closeModal()">Batal</button><button class="mbtn mbtn-confirm" onclick="saveArea(${id||'null'})">Simpan</button>`;
+    document.getElementById('modal').classList.add('show');
+    if (id) fetch(`/dashboard/area/${id}/edit/`).then(r=>r.json()).then(d=>{
+      if (d.id) {
+        document.getElementById('areaName').value = d.name;
+        document.getElementById('areaDistrict').value = d.district;
+        document.getElementById('areaLat').value = d.latitude;
+        document.getElementById('areaLon').value = d.longitude;
+        document.getElementById('areaCctvUrl').value = d.cctv_url || '';
+      }
+    });
+  }
+
+  async function saveArea(id) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', csrf);
+    fd.append('name', document.getElementById('areaName').value);
+    fd.append('district', document.getElementById('areaDistrict').value);
+    fd.append('latitude', document.getElementById('areaLat').value);
+    fd.append('longitude', document.getElementById('areaLon').value);
+    fd.append('cctv_url', document.getElementById('areaCctvUrl').value);
+    const url = id ? `/dashboard/area/${id}/edit/` : '/dashboard/area/add/';
+    const res = await fetch(url,{method:'POST',body:fd}).then(r=>r.json());
+    closeModal(); showToast(res.message, res.success?'success':'error');
+    if (res.success) setTimeout(()=>location.reload(), 1200);
+  }
+
+
+  async function deleteArea(id, name) {
+    if (!confirm(`Yakin ingin menghapus wilayah "${name}"?`)) return;
+    const fd = new FormData(); fd.append('csrfmiddlewaretoken', csrf);
+    const res = await fetch(`/dashboard/area/${id}/delete/`,{method:'POST',body:fd}).then(r=>r.json());
+    showToast(res.message, res.success?'success':'error');
+    if (res.success) setTimeout(()=>location.reload(), 1200);
+  }
+
+</script>
+</body>
+</html>

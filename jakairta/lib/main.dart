@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const JakairtaApp());
@@ -109,6 +111,24 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
   bool _notifEmail = false;
   bool _notifSms = true;
 
+  // Weather States
+  List<dynamic> _weatherForecast = [];
+  bool _isLoadingWeather = false;
+  String _weatherPoints = "";
+
+  // Auth Controllers & State
+  final TextEditingController _loginEmailCtrl = TextEditingController();
+  final TextEditingController _loginPassCtrl = TextEditingController();
+  final TextEditingController _regNameCtrl = TextEditingController();
+  final TextEditingController _regEmailCtrl = TextEditingController();
+  final TextEditingController _regPassCtrl = TextEditingController();
+  bool _isAuthLoading = false;
+
+  // CCTV & Simulasi States
+  List<dynamic> _cctvList = [];
+  List<dynamic> _simulasiList = [];
+  bool _isLoadingMedia = false;
+
   // Saved Data
   List<Map<String, dynamic>> savedPlaces = [
     {"name": "Sudirman Area", "status": "Normal", "type": "safe"},
@@ -122,12 +142,129 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
     _pageController = PageController();
     _splashAnimCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat();
 
+    _fetchWeatherPrediction();
+    _fetchCCTVAndSimulations();
+
     if (_screen == 'splash') {
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted && _screen == 'splash') {
           navigate('onboarding', clearHistory: true);
         }
       });
+    }
+  }
+
+  Future<void> _login() async {
+    setState(() => _isAuthLoading = true);
+    try {
+      final String baseUrl = 'http://10.0.2.2:8080/api/auth/login/';
+      final String fallbackUrl = 'http://127.0.0.1:8080/api/auth/login/';
+      
+      final body = json.encode({
+        'email': _loginEmailCtrl.text.trim(),
+        'password': _loginPassCtrl.text
+      });
+      
+      var res = await http.post(Uri.parse(baseUrl), headers: {'Content-Type': 'application/json'}, body: body)
+          .catchError((_) => http.post(Uri.parse(fallbackUrl), headers: {'Content-Type': 'application/json'}, body: body));
+          
+      if (res.statusCode == 200) {
+        navigate('home', clearHistory: true);
+      } else {
+        final err = json.decode(res.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err['detail'] ?? 'Login failed')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to connect to server')));
+    } finally {
+      if (mounted) setState(() => _isAuthLoading = false);
+    }
+  }
+
+  Future<void> _register() async {
+    setState(() => _isAuthLoading = true);
+    try {
+      final String baseUrl = 'http://10.0.2.2:8080/api/auth/register/';
+      final String fallbackUrl = 'http://127.0.0.1:8080/api/auth/register/';
+      
+      final body = json.encode({
+        'name': _regNameCtrl.text.trim(),
+        'email': _regEmailCtrl.text.trim(),
+        'password': _regPassCtrl.text
+      });
+      
+      var res = await http.post(Uri.parse(baseUrl), headers: {'Content-Type': 'application/json'}, body: body)
+          .catchError((_) => http.post(Uri.parse(fallbackUrl), headers: {'Content-Type': 'application/json'}, body: body));
+          
+      if (res.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration successful!')));
+        navigate('login', clearHistory: true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration failed. Check your inputs.')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to connect to server')));
+    } finally {
+      if (mounted) setState(() => _isAuthLoading = false);
+    }
+  }
+
+  Future<void> _fetchCCTVAndSimulations() async {
+    setState(() => _isLoadingMedia = true);
+    try {
+      final String baseUrl = 'http://10.0.2.2:8080/api/cctv';
+      final String fallbackUrl = 'http://127.0.0.1:8080/api/cctv';
+      
+      var cctvRes = await http.get(Uri.parse(baseUrl)).catchError((_) => http.get(Uri.parse(fallbackUrl)));
+      if (cctvRes.statusCode == 200) {
+        setState(() => _cctvList = json.decode(cctvRes.body));
+      }
+
+      var simRes = await http.get(Uri.parse('$baseUrl/simulations/')).catchError((_) => http.get(Uri.parse('$fallbackUrl/simulations/')));
+      if (simRes.statusCode == 200) {
+        setState(() => _simulasiList = json.decode(simRes.body));
+      }
+    } catch (e) {
+      debugPrint("Gagal fetch CCTV/Simulasi: \$e");
+    } finally {
+      if (mounted) setState(() => _isLoadingMedia = false);
+    }
+  }
+
+  Future<void> _fetchWeatherPrediction() async {
+    setState(() => _isLoadingWeather = true);
+    try {
+      // Menggunakan 10.0.2.2 untuk Android Emulator agar bisa konek ke localhost komputer (port 8080)
+      final response = await http.get(Uri.parse('http://10.0.2.2:8080/api/weather/forecast/'));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            _weatherForecast = data['data'];
+            if (data['live_points'] != null && data['live_points'].isNotEmpty) {
+              _weatherPoints = data['live_points'].join(', ');
+            }
+          });
+        }
+      } else {
+        // Fallback untuk web/iOS local
+        final res2 = await http.get(Uri.parse('http://127.0.0.1:8080/api/weather/forecast/'));
+        if (res2.statusCode == 200) {
+          final data = json.decode(res2.body);
+          if (data['success'] == true) {
+            setState(() {
+              _weatherForecast = data['data'];
+              if (data['live_points'] != null && data['live_points'].isNotEmpty) {
+                _weatherPoints = data['live_points'].join(', ');
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal fetch API prakiraan: \$e");
+    } finally {
+      setState(() => _isLoadingWeather = false);
     }
   }
 
@@ -403,6 +540,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
             const Center(child: Text("Jakairta", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold))),
             const SizedBox(height: 48),
             TextField(
+              controller: _loginEmailCtrl,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.email),
                 labelText: "Email",
@@ -411,6 +549,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
             ),
             const SizedBox(height: 16),
             TextField(
+              controller: _loginPassCtrl,
               obscureText: _obscureLoginPass,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.lock),
@@ -438,8 +577,10 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: () => navigate('home', clearHistory: true),
-              child: const Text("Dive in!", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+              onPressed: _isAuthLoading ? null : _login,
+              child: _isAuthLoading
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text("Dive in!", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 16),
             TextButton(
@@ -494,6 +635,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                 ),
                 const SizedBox(height: 24),
                 TextField(
+                  controller: _regNameCtrl,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.person),
                     labelText: "Full Name",
@@ -502,6 +644,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  controller: _regEmailCtrl,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.email),
                     labelText: "Email",
@@ -510,6 +653,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  controller: _regPassCtrl,
                   obscureText: _obscureRegPass,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.lock),
@@ -536,11 +680,10 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Registration successful!")));
-                    navigate('onboarding', clearHistory: true);
-                  },
-                  child: const Text("Sign Up →", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                  onPressed: _isAuthLoading ? null : _register,
+                  child: _isAuthLoading
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text("Create Account", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 16),
                 TextButton(
@@ -692,6 +835,8 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                 ],
               ),
               const SizedBox(height: 24),
+              _buildWeatherForecastSection(),
+              const SizedBox(height: 24),
               const Text("Safe Zones", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Card(
@@ -711,6 +856,72 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildWeatherForecastSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                "Weather Forecast (${_weatherPoints.isNotEmpty ? _weatherPoints : 'Jakarta'})",
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (_isLoadingWeather)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (!_isLoadingWeather && _weatherForecast.isEmpty)
+          const Text("No forecast data available at the moment.", style: TextStyle(color: Colors.grey)),
+        if (_weatherForecast.isNotEmpty)
+          SizedBox(
+            height: 120,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _weatherForecast.length,
+              itemBuilder: (context, index) {
+                final forecast = _weatherForecast[index];
+                bool isWarning = forecast['type'] == 'warning' || forecast['type'] == 'critical';
+                return Container(
+                  width: 100,
+                  margin: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: widget.isDark ? Theme.of(context).cardColor : Colors.white,
+                    border: Border.all(color: isWarning ? warningColor : (widget.isDark ? Colors.grey.shade800 : Colors.grey.shade300)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(forecast['time'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Icon(
+                        isWarning ? Icons.thunderstorm : Icons.cloud,
+                        color: isWarning ? warningColor : Colors.blue,
+                        size: 28,
+                      ),
+                      const SizedBox(height: 8),
+                      Text("${forecast['rainfall']} mm", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text("${forecast['temperature']}°C", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    ],
+                  ),
+                );
+              },
+            ),
+          )
+      ],
     );
   }
 
@@ -1400,40 +1611,96 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      GestureDetector(
-                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Live feed not available in demo"))),
-                        child: Container(
-                            height: 180,
-                            width: double.infinity,
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(14)),
-                            clipBehavior: Clip.hardEdge,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Icon(Icons.play_circle_outline, color: Colors.white.withOpacity(0.7), size: 56),
-                                Positioned(
-                                  top: 10,
-                                  left: 10,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(6)),
-                                    child: Row(
-                                      children: [
-                                        Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                                        const SizedBox(width: 4),
-                                        const Text("LIVE FEED", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                                      ],
-                                    ),
+                      if (_isLoadingMedia)
+                        const Center(child: CircularProgressIndicator())
+                      else if (_cctvList.isEmpty && _simulasiList.isEmpty)
+                        const Center(child: Text("No CCTV or Simulation available", style: TextStyle(color: Colors.grey)))
+                      else
+                        SizedBox(
+                          height: 180,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              ..._cctvList.map((cctv) {
+                                bool isFlood = cctv['detection_result'] == 'flood';
+                                return Container(
+                                  width: 240,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(14)),
+                                  clipBehavior: Clip.hardEdge,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      if (cctv['thumbnail_url'] != null && cctv['thumbnail_url'].toString().isNotEmpty)
+                                        Image.network(cctv['thumbnail_url'], fit: BoxFit.cover, width: double.infinity, height: double.infinity, errorBuilder: (c, e, s) => const Icon(Icons.videocam_off, color: Colors.grey, size: 56))
+                                      else
+                                        Icon(Icons.play_circle_outline, color: Colors.white.withOpacity(0.7), size: 56),
+                                        
+                                      Positioned(
+                                        top: 10,
+                                        left: 10,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(6)),
+                                          child: Row(
+                                            children: [
+                                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                                              const SizedBox(width: 4),
+                                              const Text("LIVE CCTV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        top: 10,
+                                        right: 10,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(color: isFlood ? Colors.red : Colors.green, borderRadius: BorderRadius.circular(6)),
+                                          child: Text(isFlood ? "FLOOD" : "SAFE", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        bottom: 8,
+                                        left: 10,
+                                        child: Text(cctv['name'] ?? "Unknown Camera", style: const TextStyle(color: Colors.white, fontSize: 12, backgroundColor: Colors.black54)),
+                                      )
+                                    ],
                                   ),
-                                ),
-                                const Positioned(
-                                  bottom: 8,
-                                  left: 10,
-                                  child: Text("CCTV CH-04: Ciliwung River Basin", style: TextStyle(color: Colors.white, fontSize: 12)),
-                                )
-                              ],
-                            )),
-                      ),
+                                );
+                              }).toList(),
+                              
+                              ..._simulasiList.map((sim) {
+                                return Container(
+                                  width: 240,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  decoration: BoxDecoration(color: Colors.blueGrey.shade900, borderRadius: BorderRadius.circular(14)),
+                                  clipBehavior: Clip.hardEdge,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Icon(Icons.movie, color: Colors.white.withOpacity(0.7), size: 56),
+                                      Positioned(
+                                        top: 10,
+                                        left: 10,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(6)),
+                                          child: const Text("SIMULASI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        bottom: 8,
+                                        left: 10,
+                                        child: Text(sim['title'] ?? "Simulasi Video", style: const TextStyle(color: Colors.white, fontSize: 12, backgroundColor: Colors.black54)),
+                                      )
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                        ),
                       const SizedBox(height: 24),
                       Row(
                         children: [
