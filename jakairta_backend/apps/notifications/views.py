@@ -8,14 +8,16 @@ from .models import Notification
 from .serializers import NotificationSerializer, FCMTokenSerializer
 
 
+from rest_framework.permissions import AllowAny
+
 @extend_schema(tags=['Notifications'])
 class NotificationListView(generics.ListAPIView):
     """Riwayat notifikasi pengguna"""
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
+        return Notification.objects.all().order_by('-sent_at')[:20]
 
 
 @extend_schema(tags=['Notifications'])

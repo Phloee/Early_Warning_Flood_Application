@@ -4,8 +4,8 @@ from django.conf import settings
 
 class FloodStatus(models.TextChoices):
     AMAN = 'aman', 'Aman'
-    POTENSIAL = 'potensial', 'Potensial'
-    BANJIR = 'banjir', 'Banjir'
+    POTENSIAL = 'potensial', 'Sudah Mulai Banjir'
+    BANJIR = 'banjir', 'Sudah Banjir'
 
 
 class Area(models.Model):

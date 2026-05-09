@@ -45,114 +45,212 @@ class WeatherHistoryView(generics.ListAPIView):
 
 @extend_schema(tags=['Weather'])
 class WeatherForecastView(APIView):
-    """Prakiraan cuaca ke depan menggunakan ARIMA dari titik Monas & Gambir"""
+    """Prakiraan cuaca real-time dari OpenWeather Forecast API (3-jam interval)"""
+    permission_classes = [AllowAny]
+
+    HARI_ID = {
+        'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
+        'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu',
+    }
+
+    def get(self, request):
+        try:
+            import pytz
+            from datetime import datetime
+
+            wib = pytz.timezone('Asia/Jakarta')
+            now_wib = datetime.now(wib)
+
+            # Koordinat pusat Jakarta
+            lat, lon = -6.2088, 106.8456
+
+            raw_forecast = OpenWeatherService.fetch_forecast(lat=lat, lon=lon)
+
+            if raw_forecast and 'list' in raw_forecast:
+                items = raw_forecast['list'][:8]  # maks 8 slot (24 jam ke depan)
+                results = []
+                for item in items:
+                    dt_utc = datetime.utcfromtimestamp(item['dt']).replace(tzinfo=pytz.utc)
+                    dt_wib = dt_utc.astimezone(wib)
+
+                    day_en  = dt_wib.strftime('%A')
+                    day_id  = self.HARI_ID.get(day_en, day_en)
+                    date_str = dt_wib.strftime('%d/%m')
+                    time_str = dt_wib.strftime('%H:%M')
+
+                    rain_3h = item.get('rain', {}).get('3h', 0.0)
+                    temp    = round(item['main']['temp'], 1)
+                    hum     = item['main']['humidity']
+                    clouds  = item.get('clouds', {}).get('all', 0)
+
+                    if rain_3h >= 50:
+                        status, type_lbl = "Hujan Sangat Lebat", "critical"
+                    elif rain_3h >= 20:
+                        status, type_lbl = "Hujan Lebat", "warning"
+                    elif rain_3h >= 5:
+                        status, type_lbl = "Hujan Sedang", "warning"
+                    elif rain_3h > 0:
+                        status, type_lbl = "Hujan Ringan", "safe"
+                    else:
+                        status, type_lbl = "Tidak Hujan", "safe"
+
+                    results.append({
+                        "day":         day_id,
+                        "date":        date_str,
+                        "time":        time_str,
+                        "rainfall":    round(rain_3h, 1),
+                        "temperature": temp,
+                        "humidity":    hum,
+                        "cloud_pct":   clouds,
+                        "status":      status,
+                        "type":        type_lbl,
+                    })
+
+                return Response({
+                    "success": True,
+                    "source": "openweather_forecast",
+                    "generated_at": now_wib.strftime('%d/%m/%Y %H:%M WIB'),
+                    "data": results,
+                })
+
+            # Fallback ARIMA jika OW tidak tersedia
+            return self._arima_fallback(wib)
+
+        except Exception as e:
+            return Response({"success": False, "error": str(e)}, status=500)
+
+    def _arima_fallback(self, wib):
+        import numpy as np
+        import pandas as pd
+        from datetime import datetime
+        from django.utils import timezone as tz
+        from datetime import timedelta
+
+        now = tz.now()
+        qs = WeatherData.objects.all().order_by('-recorded_at')[:48]
+        data_qs = list(qs)[::-1]
+
+        if len(data_qs) < 5:
+            rainfall_raw = [0.0, 0.5, 2.5, 5.0, 10.0] * 10
+            temps_raw    = [27.0, 29.0, 31.0, 28.0, 26.0] * 10
+            humids_raw   = [80, 75, 70, 80, 85] * 10
+        else:
+            rainfall_raw = [float(d.rainfall or 0.0) for d in data_qs]
+            temps_raw    = [float(d.temperature) for d in data_qs if d.temperature is not None]
+            humids_raw   = [float(d.humidity) for d in data_qs if d.humidity is not None]
+
+        min_len = min(len(rainfall_raw), len(temps_raw), len(humids_raw))
+        try:
+            from pmdarima import auto_arima
+            def _predict(series):
+                m = auto_arima(series, seasonal=False, suppress_warnings=True, error_action='ignore')
+                return list(m.predict(n_periods=5))
+            rain_f = _predict(pd.Series(rainfall_raw[:min_len]).fillna(0))
+            temp_f = _predict(pd.Series(temps_raw[:min_len]).fillna(29.0))
+            hum_f  = _predict(pd.Series(humids_raw[:min_len]).fillna(80.0))
+        except Exception:
+            rain_f = [float(np.mean(rainfall_raw[:min_len]))] * 5
+            temp_f = [float(np.mean(temps_raw[:min_len]))] * 5
+            hum_f  = [float(np.mean(humids_raw[:min_len]))] * 5
+
+        results = []
+        for i in range(5):
+            t = now + timedelta(hours=i+1)
+            t_wib = t.astimezone(wib)
+            day_id = self.HARI_ID.get(t_wib.strftime('%A'), t_wib.strftime('%A'))
+            r = round(max(0.0, float(rain_f[i])), 1)
+            tp = round(float(temp_f[i]), 1)
+            hm = round(float(hum_f[i]))
+            if r >= 20: status, lbl = "Hujan Lebat", "warning"
+            elif r >= 5: status, lbl = "Hujan Sedang", "warning"
+            elif r > 0: status, lbl = "Hujan Ringan", "safe"
+            else: status, lbl = "Tidak Hujan", "safe"
+            results.append({
+                "day": day_id, "date": t_wib.strftime('%d/%m'),
+                "time": t_wib.strftime('%H:%M'),
+                "rainfall": r, "temperature": tp, "humidity": hm,
+                "cloud_pct": 0, "status": status, "type": lbl,
+            })
+        now_wib = now.astimezone(wib)
+        return Response({
+            "success": True, "source": "arima_fallback",
+            "generated_at": now_wib.strftime('%d/%m/%Y %H:%M WIB'),
+            "data": results,
+        })
+
+
+@extend_schema(tags=['Weather'])
+class LiveWeatherView(APIView):
+    """Cuaca real-time per koordinat untuk halaman detail Flutter"""
     permission_classes = [AllowAny]
 
     def get(self, request):
         try:
-            import pandas as pd
-            import numpy as np
-            from django.utils import timezone as tz
-            from datetime import timedelta
-            from apps.weather.services import OpenWeatherService
-            
-            now = tz.now()
-            
-            JAKARTA_MONITOR_POINTS = [
-                {'name': 'Monas',  'lat': -6.1754, 'lon': 106.8272},
-                {'name': 'Gambir', 'lat': -6.1784, 'lon': 106.8316},
-            ]
-            
-            live_points = []
-            for point in JAKARTA_MONITOR_POINTS:
-                try:
-                    raw = OpenWeatherService.fetch_current(lat=point['lat'], lon=point['lon'])
-                    if raw:
-                        parsed = OpenWeatherService.parse_current(raw)
-                        if parsed:
-                            parsed['point'] = point['name']
-                            live_points.append(parsed)
-                except Exception:
-                    pass
+            lat = float(request.query_params.get('lat', -6.2297))
+            lon = float(request.query_params.get('lon', 106.8599))
+        except (ValueError, TypeError):
+            return Response({'error': 'lat/lon tidak valid'}, status=400)
 
-            # Ambil data historis
-            qs = WeatherData.objects.all().order_by('-recorded_at')[:48]
-            data_qs = list(qs)[::-1]
-            if len(data_qs) < 5:
-                # Baseline
-                rainfall_raw = [0.0, 0.5, 2.5, 5.0, 10.0, 15.0, 5.0, 1.0, 0.0, 0.0] * 5
-                temps_raw    = [26.0, 28.0, 31.0, 30.0, 28.0, 27.0, 26.0, 25.0, 25.5, 26.0] * 5
-                humids_raw   = [85, 80, 70, 75, 80, 85, 90, 92, 90, 88] * 5
+        try:
+            raw = OpenWeatherService.fetch_current(lat=lat, lon=lon)
+            if not raw:
+                return Response({'error': 'Gagal ambil data OpenWeather'}, status=503)
+
+            parsed = OpenWeatherService.parse_current(raw)
+
+            # Extra fields for flood detection
+            rain_1h = raw.get('rain', {}).get('1h', 0.0)
+            rain_3h = raw.get('rain', {}).get('3h', 0.0)
+            wind_speed = raw.get('wind', {}).get('speed', 0.0)   # m/s
+            wind_deg   = raw.get('wind', {}).get('deg', 0)
+            pressure   = raw.get('main', {}).get('pressure', 0)   # hPa
+            visibility = raw.get('visibility', 10000)              # meters
+            cloud_pct  = raw.get('clouds', {}).get('all', 0)      # %
+            humidity   = raw.get('main', {}).get('humidity', 0)
+            feels_like = raw.get('main', {}).get('feels_like', 0)
+            weather_desc = raw.get('weather', [{}])[0].get('description', '')
+            weather_icon = raw.get('weather', [{}])[0].get('icon', '')
+            city_name  = raw.get('name', '')
+
+            # Flood risk score (simple heuristic)
+            flood_score = 0
+            if rain_1h >= 10: flood_score += 40
+            elif rain_1h >= 5: flood_score += 20
+            elif rain_1h > 0: flood_score += 10
+            if humidity >= 90: flood_score += 20
+            elif humidity >= 80: flood_score += 10
+            if cloud_pct >= 80: flood_score += 15
+            if pressure < 1005: flood_score += 15
+            if wind_speed >= 10: flood_score += 10
+
+            if flood_score >= 60:
+                flood_risk_label = 'TINGGI'
+                flood_risk_color = 'red'
+            elif flood_score >= 35:
+                flood_risk_label = 'SEDANG'
+                flood_risk_color = 'orange'
             else:
-                rainfall_raw = [float(d.rainfall or 0.0) for d in data_qs]
-                temps_raw    = [float(d.temperature) for d in data_qs if d.temperature is not None]
-                humids_raw   = [float(d.humidity) for d in data_qs if d.humidity is not None]
-
-            min_len = min(len(rainfall_raw), len(temps_raw), len(humids_raw))
-            rainfall_raw = rainfall_raw[:min_len]
-            temps_raw    = temps_raw[:min_len]
-            humids_raw   = humids_raw[:min_len]
-
-            # Fit ARIMA
-            try:
-                from pmdarima import auto_arima
-                from statsmodels.tsa.arima.model import ARIMA
-                
-                def _predict(series):
-                    if len(series) >= 10:
-                        m = auto_arima(series, seasonal=False, suppress_warnings=True, error_action='ignore', max_p=3, max_q=2, d=0)
-                        return m.predict(n_periods=5)
-                    else:
-                        m = ARIMA(series, order=(1,0,0)).fit()
-                        return m.forecast(steps=5)
-                        
-                rain_forecast = list(_predict(pd.Series(rainfall_raw).fillna(0)))
-                temp_forecast = list(_predict(pd.Series(temps_raw).fillna(29.0)))
-                hum_forecast  = list(_predict(pd.Series(humids_raw).fillna(80.0)))
-            except Exception:
-                rain_forecast = [float(np.mean(rainfall_raw))] * 5
-                temp_forecast = [float(np.mean(temps_raw))] * 5
-                hum_forecast  = [float(np.mean(humids_raw))] * 5
-                
-            # Blend dengan data live
-            if live_points:
-                live_rain_avg = float(np.mean([p.get('rainfall', 0.0) for p in live_points]))
-                live_temp_avg = float(np.mean([p.get('temperature', 29.0) for p in live_points]))
-                live_hum_avg  = float(np.mean([p.get('humidity', 80.0) for p in live_points]))
-                rain_forecast[0] = 0.7 * live_rain_avg + 0.3 * max(0, float(rain_forecast[0]))
-                temp_forecast[0] = 0.7 * live_temp_avg + 0.3 * float(temp_forecast[0])
-                hum_forecast[0]  = 0.7 * live_hum_avg  + 0.3 * float(hum_forecast[0])
-
-            results = []
-            for i in range(5):
-                t = now + timedelta(hours=i+1)
-                r = max(0.0, float(rain_forecast[i]))
-                tp = round(float(temp_forecast[i]), 1)
-                hm = round(float(hum_forecast[i]), 0)
-                
-                if r >= 50:
-                    status, type_lbl = "Critical: Very Heavy Rain", "critical"
-                elif r >= 20:
-                    status, type_lbl = "Warning: Heavy Rain", "warning"
-                elif r >= 10:
-                    status, type_lbl = "Warning: Moderate Rain", "warning"
-                else:
-                    status, type_lbl = "Safe: Normal conditions", "safe"
-                    
-                results.append({
-                    "time": t.strftime('%H:%M'),
-                    "rainfall": round(r, 1),
-                    "temperature": tp,
-                    "humidity": hm,
-                    "status": status,
-                    "type": type_lbl
-                })
+                flood_risk_label = 'RENDAH'
+                flood_risk_color = 'green'
 
             return Response({
-                "success": True,
-                "data": results,
-                "live_points": [p['point'] for p in live_points]
+                'success': True,
+                'city': city_name,
+                'temperature': parsed.get('temperature'),
+                'feels_like': round(feels_like - 273.15, 1) if feels_like > 100 else feels_like,
+                'humidity': humidity,
+                'description': weather_desc,
+                'icon': f"https://openweathermap.org/img/wn/{weather_icon}@2x.png" if weather_icon else '',
+                'rain_1h': round(rain_1h, 2),
+                'rain_3h': round(rain_3h, 2),
+                'wind_speed': round(wind_speed * 3.6, 1),  # convert m/s to km/h
+                'wind_deg': wind_deg,
+                'pressure': pressure,
+                'visibility_km': round(visibility / 1000, 1),
+                'cloud_pct': cloud_pct,
+                'flood_risk_score': flood_score,
+                'flood_risk_label': flood_risk_label,
+                'flood_risk_color': flood_risk_color,
             })
-
         except Exception as e:
-            return Response({"success": False, "error": str(e)}, status=500)
+            return Response({'success': False, 'error': str(e)}, status=500)

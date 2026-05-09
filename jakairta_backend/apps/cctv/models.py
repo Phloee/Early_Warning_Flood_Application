@@ -7,7 +7,8 @@ class CCTVCamera(models.Model):
 
     class DetectionResult(models.TextChoices):
         NO_FLOOD = 'no_flood', 'Tidak Banjir'
-        FLOOD = 'flood', 'Banjir Terdeteksi'
+        MULAI_BANJIR = 'mulai_banjir', 'Sudah Mulai Banjir'
+        FLOOD = 'flood', 'Sudah Banjir'
         UNCERTAIN = 'uncertain', 'Tidak Pasti'
         OFFLINE = 'offline', 'Kamera Offline'
 
@@ -79,8 +80,8 @@ class FloodAnalysisLog(models.Model):
         SIMULATION = 'simulation', 'Video Simulasi'
 
     class FloodStatus(models.TextChoices):
-        BANJIR = 'banjir', 'BANJIR'
-        BANJIR_RINGAN = 'banjir_ringan', 'BANJIR RINGAN'
+        BANJIR = 'banjir', 'Sudah Banjir'
+        BANJIR_RINGAN = 'banjir_ringan', 'Sudah Mulai Banjir'
         HANYA_GENANGAN = 'hanya_genangan', 'HANYA GENANGAN'
         AMAN = 'aman', 'AMAN (TIDAK BANJIR)'
 

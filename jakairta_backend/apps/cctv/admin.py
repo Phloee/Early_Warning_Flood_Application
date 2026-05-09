@@ -10,7 +10,42 @@ class CCTVCameraAdmin(admin.ModelAdmin):
     list_filter = ['detection_result', 'is_active', 'area']
     search_fields = ['name', 'area__name']
     list_editable = ['is_active']
+    actions = ['trigger_analysis']
     readonly_fields = ['last_detected_at', 'confidence_score', 'detection_result', 'flood_probability_info']
+
+    def trigger_analysis(self, request, queryset):
+        import json
+        from django.contrib import messages
+        from apps.dashboard.views import analyze_camera
+        from django.http import HttpRequest
+        
+        success_count = 0
+        error_count = 0
+        
+        for camera in queryset:
+            # Simulasi POST request untuk memicu analyze_camera
+            fake_request = HttpRequest()
+            fake_request.method = 'POST'
+            fake_request.user = request.user
+            
+            try:
+                response = analyze_camera(fake_request, camera.id)
+                data = json.loads(response.content)
+                if data.get('success'):
+                    success_count += 1
+                else:
+                    messages.warning(request, f"Kamera {camera.name}: {data.get('message')}")
+                    error_count += 1
+            except Exception as e:
+                messages.error(request, f"Kamera {camera.name} Error: {str(e)}")
+                error_count += 1
+        
+        if success_count:
+            messages.success(request, f"Berhasil menganalisis {success_count} kamera.")
+        if error_count:
+            messages.error(request, f"Gagal menganalisis {error_count} kamera.")
+            
+    trigger_analysis.short_description = "🚀 Jalankan Analisis AI Sekarang"
 
     fieldsets = (
         ('Informasi Kamera', {

@@ -10,7 +10,7 @@ class CCTVCameraSerializer(serializers.ModelSerializer):
         model = CCTVCamera
         fields = [
             'id', 'name', 'area_name', 'location_description',
-            'thumbnail_url', 'is_active',
+            'stream_url', 'thumbnail_url', 'is_active',
             'detection_result', 'detection_display',
             'confidence_score', 'last_detected_at',
         ]

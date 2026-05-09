@@ -9,7 +9,12 @@ urlpatterns = [
     path('predict/', views.predict_flood, name='dashboard_predict'),
     path('analyze/<int:camera_id>/', views.analyze_camera, name='dashboard_analyze'),
     path('analyze_sim/<int:sim_id>/', views.analyze_sim, name='dashboard_analyze_sim'),
+    path('stream_sim/<int:sim_id>/', views.stream_sim_video, name='dashboard_stream_sim'),
+    path('latest_analysis/<int:area_id>/', views.get_latest_analysis, name='dashboard_latest_analysis'),
+    path('broadcast_alert/', views.broadcast_alert, name='dashboard_broadcast_alert'),
     path('api/status/', views.api_status, name='dashboard_api_status'),
+    path('api/notifications/', views.flood_notifications_api, name='dashboard_notifications_api'),
+    path('api/notifications/read/', views.mark_notifications_read, name='dashboard_notifications_read'),
 
     # CRUD — Kamera CCTV
     

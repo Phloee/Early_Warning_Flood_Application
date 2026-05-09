@@ -22,7 +22,7 @@ class AreaListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Area
-        fields = ['id', 'name', 'district', 'status', 'status_display', 'water_level_cm', 'updated_at']
+        fields = ['id', 'name', 'district', 'status', 'status_display', 'water_level_cm', 'water_level_change', 'latitude', 'longitude', 'updated_at']
 
 
 class SavedAreaSerializer(serializers.ModelSerializer):

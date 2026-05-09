@@ -67,6 +67,22 @@ class Yolov8WebhookView(APIView):
                 camera.thumbnail_url = snapshot_url
             camera.last_detected_at = timezone.now()
             camera.save()
+
+            # Create Analysis Log for dashboard and history
+            is_flood = detection_result == 'flood'
+            from .models import FloodAnalysisLog
+            FloodAnalysisLog.objects.create(
+                area=camera.area,
+                camera=camera,
+                source_type='cctv',
+                source_name=camera.name,
+                status_banjir=detection_result,
+                is_flood=is_flood,
+                has_water=is_flood or detection_result == 'mulai_banjir',
+                confidence_score=confidence * 100 if confidence <= 1.0 else confidence,
+                water_level_text='Tinggi' if detection_result == 'flood' else ('Sedang' if detection_result == 'mulai_banjir' else 'Aman'),
+                recommendation='Pantau terus kondisi.' if not is_flood else 'Waspada banjir!'
+            )
             
             return Response({'status': 'success', 'message': f'Status Kamera {camera.name} diperbarui ke {detection_result}'})
         except CCTVCamera.DoesNotExist:
