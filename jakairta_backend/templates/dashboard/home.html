@@ -532,6 +532,7 @@
           <div class="ai-row"><div class="ai-label">Status Genangan</div><div class="ai-val" id="aiWater_{{ d.area.id }}_sim">Belum dimulai</div></div>
           <div class="ai-row"><div class="ai-label">Fase Simulasi</div><div class="ai-val" id="aiRain_{{ d.area.id }}_sim">—</div></div>
           <div class="ai-row"><div class="ai-label">Area Tergenang</div><div class="ai-val" id="aiArea_{{ d.area.id }}_sim">—</div></div>
+          <div class="ai-row"><div class="ai-label">Confidence</div><div class="ai-val" id="aiConf_{{ d.area.id }}_sim" style="color:var(--primary); font-weight:700;">—</div></div>
           <div class="ai-row"><div class="ai-label">Rekomendasi</div><div class="ai-val" id="aiRec_{{ d.area.id }}_sim" style="font-size:11px;">—</div></div>
           <div style="margin-top:auto;padding-top:6px;">
             <div id="sim_scan_status_{{ d.area.id }}" style="font-size:11px;color:var(--muted);">⏸ Tekan Mulai Simulasi</div>
@@ -728,6 +729,9 @@
         document.getElementById(`aiWater_${areaId}_${suffix}`).className = `ai-val ${d.has_water ? (d.water_area_ratio>15?'danger':'warn') : 'safe'}`;
         document.getElementById(`aiRain_${areaId}_${suffix}`).textContent = d.rain_intensity;
         document.getElementById(`aiArea_${areaId}_${suffix}`).textContent = d.water_level_text;
+        if (document.getElementById(`aiConf_${areaId}_${suffix}`)) {
+            document.getElementById(`aiConf_${areaId}_${suffix}`).textContent = d.confidence_score + '%';
+        }
         document.getElementById(`aiRec_${areaId}_${suffix}`).textContent = d.recommendation;
         document.getElementById(`aiRec_${areaId}_${suffix}`).className = `ai-val ${riskClass}`;
 

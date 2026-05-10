@@ -10,7 +10,7 @@ class AppTheme {
       colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
         secondary: AppColors.secondary,
-        background: AppColors.background,
+        surface: AppColors.background,
         error: AppColors.critical,
       ),
       textTheme: GoogleFonts.interTextTheme().copyWith(

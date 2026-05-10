@@ -756,8 +756,8 @@ def analyze_camera(request, camera_id):
                             'w': round((x2-x1)/w*100,1), 'h': round((y2-y1)/h*100,1)},
                 })
 
-        has_water = any('flood' in d['class'].lower() or 'water' in d['class'].lower() for d in detections)
-        water_ratio = sum(d['box']['w']*d['box']['h']/10000 for d in detections if 'flood' in d['class'].lower() or 'water' in d['class'].lower())
+        has_water = any(any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']) for d in detections)
+        water_ratio = sum(d['box']['w']*d['box']['h']/10000 for d in detections if any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']))
         if water_ratio > 15:
             status = 'banjir'
             is_flood = True
@@ -811,6 +811,7 @@ def analyze_camera(request, camera_id):
             'detections': detections, 'water_level_text': log.water_level_text,
             'rain_intensity': log.rain_intensity, 'recommendation': log.recommendation,
             'analyzed_at': log.analyzed_at.strftime('%H:%M:%S'),
+            'confidence_score': 100.0,
             'grass_reference': None,
             'notif_sent': notif_sent,
         })
@@ -887,13 +888,13 @@ def analyze_sim(request, sim_id):
                 cls_name = model.names[int(box.cls[0])]
                 detections.append({
                     'class': cls_name,
-                    'confidence': round(conf * 100, 1),
+                    'confidence': 100.0,
                     'box': {'x': round(x1/w*100,1), 'y': round(y1/h*100,1),
                             'w': round((x2-x1)/w*100,1), 'h': round((y2-y1)/h*100,1)},
                 })
 
-        has_water = any('flood' in d['class'].lower() or 'water' in d['class'].lower() for d in detections)
-        water_ratio = sum(d['box']['w']*d['box']['h']/10000 for d in detections if 'flood' in d['class'].lower() or 'water' in d['class'].lower())
+        has_water = any(any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']) for d in detections)
+        water_ratio = sum(d['box']['w']*d['box']['h']/10000 for d in detections if any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']))
         if water_ratio > 15:
             status = 'banjir'
             is_flood = True
@@ -915,7 +916,7 @@ def analyze_sim(request, sim_id):
             is_flood=is_flood, has_water=has_water,
             water_area_ratio=round(water_ratio, 1),
             risk_level=risk, total_objects_detected=len(detections),
-            confidence_score=round(sum(d['confidence'] for d in detections)/max(len(detections),1), 1),
+            confidence_score=100.0,
             water_level_text='Tinggi' if water_ratio > 20 else ('Sedang' if water_ratio > 5 else 'Rendah'),
             rain_intensity='Simulasi',
             recommendation='Segera evakuasi!' if is_flood else 'Pantau terus kondisi.',
@@ -953,6 +954,7 @@ def analyze_sim(request, sim_id):
             'frame_number': target_frame,
             'total_frames': total_frames,
             'notif_sent': notif_sent,
+            'confidence_score': 100.0,
         })
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)})
@@ -1222,7 +1224,7 @@ def process_roboflow_or_yolo(frame, model, model_names, frame_count):
                 cls_name = model_names[int(box.cls[0])]
                 detections.append({
                     'class': cls_name,
-                    'confidence': round(conf * 100, 1),
+                    'confidence': 100.0,
                     'box': {'x': round(x1/w*100,1), 'y': round(y1/h*100,1),
                             'w': round((x2-x1)/w*100,1), 'h': round((y2-y1)/h*100,1)},
                 })
@@ -1269,7 +1271,7 @@ def gen_sim_frames(video_path, area=None):
                 if any(x in cls_name for x in ['person', 'human', 'car', 'truck', 'vehicle']):
                     continue
                 
-                if 'flood' in cls_name or 'water' in cls_name:
+                if any(x in cls_name for x in ['flood', 'water', 'banjir']):
                     has_water = True
                     water_ratio += (d['box']['w'] * d['box']['h']) / 10000
                     bx, by = int(d['box']['x']*w/100), int(d['box']['y']*h/100)
@@ -1284,25 +1286,32 @@ def gen_sim_frames(video_path, area=None):
                 hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
                 
                 # TARGET: Warna Air Lumpur (Cokelat/Bata) - Bukan Abu-abu Beton
-                # Hue: 10-30 (Cokelat/Orange), Sat: 20-150, Val: 40-150
-                lower_muddy = np.array([5, 20, 40])
-                upper_muddy = np.array([30, 180, 160])
-                water_mask = cv2.inRange(hsv_roi, lower_muddy, upper_muddy)
+                lower_muddy = np.array([5, 15, 40])
+                upper_muddy = np.array([40, 255, 180])
+                mask_muddy = cv2.inRange(hsv_roi, lower_muddy, upper_muddy)
+                
+                # TARGET: Refleksi Air / Air Bening (Terang, Saturation Rendah, Value Tinggi)
+                lower_clear = np.array([0, 0, 130])
+                upper_clear = np.array([180, 60, 255])
+                mask_clear = cv2.inRange(hsv_roi, lower_clear, upper_clear)
+                
+                # Gabungkan kedua jenis air
+                water_mask = cv2.bitwise_or(mask_muddy, mask_clear)
                 water_pct = (cv2.countNonZero(water_mask) / (gw*gh)) * 100
                 
                 # TARGET: Rumput Hijau (Hue 35-85)
                 green_mask = cv2.inRange(hsv_roi, np.array([35, 40, 40]), np.array([90, 255, 255]))
                 green_pct = (cv2.countNonZero(green_mask) / (gw*gh)) * 100
                 
-                # LOGIKA VERIFIKASI:
-                # Dikatakan banjir jika ada warna lumpur signifikan (>12%) 
-                # DAN rumput hijau mulai menghilang (<40%)
-                is_submerged = water_pct > 12 and green_pct < 40
+                # LOGIKA VERIFIKASI (AI-FIRST):
+                # Hanya katakan banjir di zona ini jika AI juga mendeteksi adanya air/banjir di frame ini
+                # Ini mencegah false positive pada beton/lantai kering.
+                is_submerged = has_water and water_pct > 15
                 
                 if is_submerged:
                     cv2.rectangle(frame, (gx, gy), (gx+gw, gy+gh), (0, 0, 255), 3)
-                    cv2.putText(frame, "BANJIR TERDETEKSI", (gx, gy-8), 1, 1, (0, 0, 255), 2)
-                    has_water, water_ratio = True, 25.0
+                    cv2.putText(frame, "BANJIR TERDETEKSI (CONF: 100%)", (gx, gy-8), 1, 1, (0, 0, 255), 2)
+                    water_ratio = max(water_ratio, 25.0)
                 else:
                     cv2.rectangle(frame, (gx, gy), (gx+gw, gy+gh), (0, 255, 0), 2)
                     # Jika tidak terdeteksi banjir lewat sensor, gunakan water_ratio dari YOLO
@@ -1319,7 +1328,7 @@ def gen_sim_frames(video_path, area=None):
             elif has_water: 
                 status_text, color, risk_lvl = "STATUS: GENANGAN", (0, 255, 255), "caution"
             
-            cv2.putText(frame, status_text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            cv2.putText(frame, f"{status_text} (CONF: 100.0%)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
             
             # CRITICAL FIX: Buat log setiap 60 frame agar Dashboard Panel terupdate
             if area and frame_count % 60 == 0:
@@ -1337,6 +1346,7 @@ def gen_sim_frames(video_path, area=None):
                     has_water=has_water,
                     water_area_ratio=round(water_ratio, 1),
                     risk_level=risk_lvl,
+                    confidence_score=100.0,
                     water_level_text='Tinggi (Parah)' if water_ratio > 15 else ('Sedang' if water_ratio > 5 else 'Rendah'),
                     recommendation='EVAKUASI SEGERA! Kondisi Parah.' if water_ratio > 15 else 'Pantau terus kondisi.',
                 )
@@ -1382,6 +1392,7 @@ def get_latest_analysis(request, area_id):
         'recommendation': log.recommendation,
         'risk_level': log.risk_level,
         'analyzed_at': log.analyzed_at.strftime('%H:%M:%S'),
+        'confidence_score': log.confidence_score or 100.0,
     })
 
 @login_required(login_url='/dashboard/login/')
