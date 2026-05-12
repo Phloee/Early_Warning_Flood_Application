@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 
@@ -1890,7 +1889,9 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                                 final streamUrl = cctv['stream_url'] as String? ?? '';
                                 return GestureDetector(
                                   onTap: streamUrl.isNotEmpty
-                                      ? () => html.window.open(streamUrl, '_blank')
+                                      ? () => ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('CCTV stream: $streamUrl')),
+                                          )
                                       : null,
                                   child: Container(
                                     width: 240,

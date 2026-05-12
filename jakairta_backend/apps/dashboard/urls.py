@@ -13,6 +13,7 @@ urlpatterns = [
     path('latest_analysis/<int:area_id>/', views.get_latest_analysis, name='dashboard_latest_analysis'),
     path('broadcast_alert/', views.broadcast_alert, name='dashboard_broadcast_alert'),
     path('api/status/', views.api_status, name='dashboard_api_status'),
+    path('api/area-status-stream/', views.area_status_stream, name='dashboard_area_status_stream'),
     path('api/notifications/', views.flood_notifications_api, name='dashboard_notifications_api'),
     path('api/notifications/read/', views.mark_notifications_read, name='dashboard_notifications_read'),
 

@@ -12,6 +12,7 @@ class AreaSerializer(serializers.ModelSerializer):
             'latitude', 'longitude',
             'status', 'status_display',
             'water_level_cm', 'water_level_change',
+            'status_genangan', 'area_tergenang', 'ai_confidence_level', 'last_ai_detected_at',
             'description', 'updated_at',
         ]
 
@@ -22,7 +23,7 @@ class AreaListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Area
-        fields = ['id', 'name', 'district', 'status', 'status_display', 'water_level_cm', 'water_level_change', 'latitude', 'longitude', 'updated_at']
+        fields = ['id', 'name', 'district', 'status', 'status_display', 'water_level_cm', 'water_level_change', 'status_genangan', 'area_tergenang', 'ai_confidence_level', 'last_ai_detected_at', 'latitude', 'longitude', 'updated_at']
 
 
 class SavedAreaSerializer(serializers.ModelSerializer):

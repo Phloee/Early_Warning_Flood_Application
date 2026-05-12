@@ -4,6 +4,7 @@ from django.conf import settings
 
 class FloodStatus(models.TextChoices):
     AMAN = 'aman', 'Aman'
+    SIAGA = 'siaga', 'Siaga'
     POTENSIAL = 'potensial', 'Sudah Mulai Banjir'
     BANJIR = 'banjir', 'Sudah Banjir'
 
@@ -22,6 +23,10 @@ class Area(models.Model):
     )
     water_level_cm = models.FloatField(default=0.0, help_text='Ketinggian air dalam cm')
     water_level_change = models.FloatField(default=0.0, help_text='Perubahan ketinggian air cm/jam')
+    status_genangan = models.CharField(max_length=80, default='Tidak Ada Genangan')
+    area_tergenang = models.FloatField(default=0.0, help_text='Estimasi persentase area tergenang dari AI (0-100)')
+    ai_confidence_level = models.CharField(max_length=20, blank=True, default='')
+    last_ai_detected_at = models.DateTimeField(null=True, blank=True)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)

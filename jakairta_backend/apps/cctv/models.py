@@ -81,6 +81,7 @@ class FloodAnalysisLog(models.Model):
 
     class FloodStatus(models.TextChoices):
         BANJIR = 'banjir', 'Sudah Banjir'
+        SIAGA = 'siaga', 'Siaga'
         BANJIR_RINGAN = 'banjir_ringan', 'Sudah Mulai Banjir'
         HANYA_GENANGAN = 'hanya_genangan', 'HANYA GENANGAN'
         AMAN = 'aman', 'AMAN (TIDAK BANJIR)'
@@ -106,6 +107,8 @@ class FloodAnalysisLog(models.Model):
     confidence_score = models.FloatField(default=0.0, help_text='Confidence score rata-rata (0-100)')
     model_used = models.CharField(max_length=100, default='best.pt')
     frame_size = models.CharField(max_length=30, blank=True)
+    evidence = models.TextField(blank=True, help_text='Ringkasan evidence permukaan tanah dari AI')
+    frame_results = models.JSONField(default=list, blank=True, help_text='Hasil analisis per-frame beserta evidence')
 
     # Timestamp
     analyzed_at = models.DateTimeField(auto_now_add=True)

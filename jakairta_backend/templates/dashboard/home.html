@@ -351,15 +351,15 @@
     </div>
     <div class="stat">
       <div class="stat-label">Banjir</div>
-      <div class="stat-val c-danger">{{ stats.flood_areas }}</div>
+      <div class="stat-val c-danger" id="statFloodAreas">{{ stats.flood_areas }}</div>
     </div>
     <div class="stat">
       <div class="stat-label">Siaga</div>
-      <div class="stat-val c-warning">{{ stats.warning_areas }}</div>
+      <div class="stat-val c-warning" id="statWarningAreas">{{ stats.warning_areas }}</div>
     </div>
     <div class="stat">
       <div class="stat-label">Aman</div>
-      <div class="stat-val c-success">{{ stats.safe_areas }}</div>
+      <div class="stat-val c-success" id="statSafeAreas">{{ stats.safe_areas }}</div>
     </div>
   </div>
 
@@ -402,7 +402,7 @@
   <div class="areas-grid">
     {% for d in areas_data %}
     <!-- Card 1: CCTV Live -->
-    <div class="area-card {% if d.cctv_met and d.weather_met %}state-flood{% elif d.weather_met %}state-warning{% endif %}">
+    <div class="area-card {% if d.area.status == 'banjir' %}state-flood{% elif d.area.status == 'siaga' or d.area.status == 'potensial' %}state-warning{% elif d.cctv_met and d.weather_met %}state-flood{% elif d.weather_met %}state-warning{% endif %}" id="areaCard_{{ d.area.id }}" data-area-status="{{ d.area.status }}">
       <div class="ac-header">
         <div>
           <div class="ac-name">{{ d.area.name }} <span style="font-size:12px;color:var(--muted);font-weight:500;">(Live)</span>
@@ -411,7 +411,7 @@
             </div>
           <div class="ac-district">{{ d.area.district }}</div>
         </div>
-        <div class="pill {% if d.area.status == 'banjir' %}pill-flood{% elif d.area.status == 'potensial' %}pill-warning{% else %}pill-safe{% endif %}">
+        <div class="pill {% if d.area.status == 'banjir' %}pill-flood{% elif d.area.status == 'siaga' or d.area.status == 'potensial' %}pill-warning{% else %}pill-safe{% endif %}" id="areaStatusPill_{{ d.area.id }}">
           {{ d.area.status|upper }}
         </div>
       </div>
@@ -424,6 +424,10 @@
         <div class="cond {% if d.cctv_met %}met{% else %}fail{% endif %}">
           <div class="cond-dot"></div>
           Syarat 2 — CCTV{% if d.cctv_met %} (Banjir){% endif %}
+        </div>
+        <div class="cond {% if d.area.status == 'banjir' %}met{% elif d.area.status == 'siaga' or d.area.status == 'potensial' %}fail{% else %}fail{% endif %}" id="areaGenangan_{{ d.area.id }}">
+          <div class="cond-dot"></div>
+          Status Genangan — {{ d.area.status_genangan }}{% if d.area.area_tergenang %} ({{ d.area.area_tergenang|floatformat:1 }}%){% endif %}
         </div>
       </div>
 
@@ -465,6 +469,8 @@
       </div>
 
       <div class="ac-footer">
+        <button
+          class="alert-btn {% if d.both_met %}ready{% else %}not-ready{% endif %}"
           onclick="openAlert({{ d.area.id }}, '{{ d.area.name|escapejs }}', {% if d.both_met %}true{% else %}false{% endif %})">
           Kirim Peringatan Darurat
         </button>
@@ -695,6 +701,59 @@
       .catch(()=>{ btn.disabled=false; btn.textContent='Prediksi Banjir (ARIMA)'; showToast('Gagal menghubungi server.','error'); });
   }
 
+  function recomputeAreaStats() {
+    const cards = [...document.querySelectorAll('[id^="areaCard_"]')];
+    const counts = {banjir: 0, siaga: 0, aman: 0};
+    cards.forEach(card => {
+      const s = (card.dataset.areaStatus || 'aman').toLowerCase();
+      if (s === 'banjir') counts.banjir++;
+      else if (s === 'siaga' || s === 'potensial') counts.siaga++;
+      else counts.aman++;
+    });
+    const floodEl = document.getElementById('statFloodAreas');
+    const warnEl = document.getElementById('statWarningAreas');
+    const safeEl = document.getElementById('statSafeAreas');
+    if (floodEl) floodEl.textContent = counts.banjir;
+    if (warnEl) warnEl.textContent = counts.siaga;
+    if (safeEl) safeEl.textContent = counts.aman;
+  }
+
+  function applyAreaStatus(payload) {
+    if (!payload) return;
+    const areaId = payload.area_id || payload.wilayah_id;
+    const status = (payload.status_banjir || 'aman').toLowerCase();
+    const genangan = payload.status_genangan || (status === 'banjir' ? 'Ada Genangan' : status === 'siaga' ? 'Potensi Genangan' : 'Tidak Ada Genangan');
+    const ratio = Number(payload.area_tergenang || 0).toFixed(1);
+
+    const card = document.getElementById(`areaCard_${areaId}`);
+    if (card) {
+      card.dataset.areaStatus = status;
+      card.classList.remove('state-flood', 'state-warning');
+      if (status === 'banjir') card.classList.add('state-flood');
+      else if (status === 'siaga' || status === 'potensial') card.classList.add('state-warning');
+    }
+
+    const pill = document.getElementById(`areaStatusPill_${areaId}`);
+    if (pill) {
+      pill.textContent = status.toUpperCase();
+      pill.className = `pill ${status === 'banjir' ? 'pill-flood' : (status === 'siaga' || status === 'potensial') ? 'pill-warning' : 'pill-safe'}`;
+    }
+
+    const genEl = document.getElementById(`areaGenangan_${areaId}`);
+    if (genEl) {
+      genEl.className = `cond ${status === 'banjir' ? 'met' : 'fail'}`;
+      genEl.innerHTML = `<div class="cond-dot"></div>Status Genangan — ${genangan}${ratio !== '0.0' ? ` (${ratio}%)` : ''}`;
+    }
+    recomputeAreaStats();
+  }
+
+  if (window.EventSource) {
+    const areaStatusEvents = new EventSource('/dashboard/api/area-status-stream/');
+    areaStatusEvents.addEventListener('area_status', (event) => {
+      try { applyAreaStatus(JSON.parse(event.data)); } catch(e) { console.warn('area status event error', e); }
+    });
+  }
+
   // ── YOLOv8 Analyze ──
   function runAnalyze(camId, areaId, isSim, suffix) {
     const btn = document.getElementById(`analyzeBtn_${areaId}_${suffix}`);
@@ -714,6 +773,7 @@
             'banjir_ringan': 'SUDAH MULAI BANJIR',
             'mulai_banjir': 'SUDAH MULAI BANJIR',
             'hanya_genangan': 'HANYA GENANGAN',
+            'siaga': 'SIAGA',
             'aman': 'AMAN',
             'no_flood': 'AMAN'
         };
@@ -721,17 +781,19 @@
         document.getElementById(`aiBanjir_${areaId}_${suffix}`).textContent = displayStatus;
         
         let banjirClass = 'safe';
-        if (displayStatus.includes('BANJIR')) banjirClass = 'danger';
-        else if (displayStatus.includes('GENANGAN')) banjirClass = 'warn';
+        if (d.risk_level === 'critical' || displayStatus === 'SUDAH BANJIR') banjirClass = 'danger';
+        else if (displayStatus.includes('GENANGAN') || displayStatus.includes('SIAGA') || displayStatus.includes('MULAI')) banjirClass = 'warn';
         document.getElementById(`aiBanjir_${areaId}_${suffix}`).className = `ai-val ${banjirClass}`;
         
         document.getElementById(`aiWater_${areaId}_${suffix}`).textContent = d.has_water ? `Terdeteksi (${d.water_area_ratio}%)` : 'Tidak Ada Genangan';
-        document.getElementById(`aiWater_${areaId}_${suffix}`).className = `ai-val ${d.has_water ? (d.water_area_ratio>15?'danger':'warn') : 'safe'}`;
+        document.getElementById(`aiWater_${areaId}_${suffix}`).className = `ai-val ${d.has_water ? (d.water_area_ratio>=35?'danger':'warn') : 'safe'}`;
         document.getElementById(`aiRain_${areaId}_${suffix}`).textContent = d.rain_intensity;
         document.getElementById(`aiArea_${areaId}_${suffix}`).textContent = d.water_level_text;
+        applyAreaStatus(d.area_status);
         if (document.getElementById(`aiConf_${areaId}_${suffix}`)) {
             document.getElementById(`aiConf_${areaId}_${suffix}`).textContent = d.confidence_score + '%';
         }
+        const riskClass = d.risk_level==='critical'?'danger':d.risk_level==='warning'||d.risk_level==='caution'?'warn':'safe';
         document.getElementById(`aiRec_${areaId}_${suffix}`).textContent = d.recommendation;
         document.getElementById(`aiRec_${areaId}_${suffix}`).className = `ai-val ${riskClass}`;
 
@@ -865,14 +927,14 @@
     if (banjirEl) {
       banjirEl.textContent = d.status_banjir;
       let banjirClass = 'safe';
-      if (d.status_banjir && d.status_banjir.includes('BANJIR') && !d.status_banjir.includes('TIDAK')) banjirClass = 'danger';
-      else if (d.status_banjir && d.status_banjir.includes('GENANGAN')) banjirClass = 'warn';
+      if (d.risk_level === 'critical' || d.status_banjir === 'SUDAH BANJIR') banjirClass = 'danger';
+      else if (d.status_banjir && (d.status_banjir.includes('GENANGAN') || d.status_banjir.includes('SIAGA') || d.status_banjir.includes('MULAI'))) banjirClass = 'warn';
       banjirEl.className = `ai-val ${banjirClass}`;
     }
     const waterEl = document.getElementById(`aiWater_${areaId}_cctv`);
     if (waterEl) {
       waterEl.textContent = d.has_water ? `Terdeteksi (${d.water_area_ratio}%)` : 'Tidak Ada Genangan';
-      waterEl.className   = `ai-val ${d.has_water ? (d.water_area_ratio>15?'danger':'warn') : 'safe'}`;
+      waterEl.className   = `ai-val ${d.has_water ? (d.water_area_ratio>=35?'danger':'warn') : 'safe'}`;
     }
     const els = {rain:'aiRain', area:'aiArea', rec:'aiRec'};
     const vals = {rain: d.rain_intensity, area: d.water_level_text, rec: d.recommendation};
@@ -882,6 +944,7 @@
     });
     const scanTxt = document.getElementById(`cctv_scan_txt_${areaId}`);
     if (scanTxt) scanTxt.textContent = `Terakhir scan: ${d.analyzed_at}`;
+    applyAreaStatus(d.area_status);
     // Jika banjir terdeteksi, notif sudah dikirim dari server (d.notif_sent)
     if (d.notif_sent) pollNotifications();
   }
@@ -923,7 +986,7 @@
   }
 
   async function startSimulation(simId, areaId) {
-    simStates[areaId] = { running: true, phase: 'streaming', simId };
+    simStates[areaId] = { running: true, phase: 'streaming', simId, timers: [] };
     const btn  = document.getElementById(`simStartBtn_${areaId}`);
     const pill = document.getElementById(`simStatusPill_${areaId}`);
     const tag  = document.getElementById(`simLiveTag_${areaId}`);
@@ -961,8 +1024,11 @@
     if (areaEl) areaEl.innerHTML = 'AI Mendeteksi...';
     if (recEl) recEl.innerHTML = 'Perhatikan kotak merah pada video.';
 
-    // Start polling for status updates while simulation is running
-    pollSimStatus(areaId);
+    // Analyze progressively by video phase. Awal harus AMAN, baru naik SIAGA/BANJIR
+    // saat frame video memang sudah menunjukkan air.
+    runSimAnalyze(simId, areaId, 'start');
+    simStates[areaId].timers.push(setTimeout(() => runSimAnalyze(simId, areaId, 'middle'), 7000));
+    simStates[areaId].timers.push(setTimeout(() => runSimAnalyze(simId, areaId, 'end'), 14000));
   }
 
   async function pollSimStatus(areaId) {
@@ -978,14 +1044,14 @@
         if (banjirEl) {
           banjirEl.textContent = d.status_banjir;
           let bc = 'safe';
-          if (d.status_banjir && d.status_banjir.includes('BANJIR') && !d.status_banjir.includes('TIDAK')) bc = 'danger';
-          else if (d.status_banjir && d.status_banjir.includes('GENANGAN')) bc = 'warn';
+          if (d.risk_level === 'critical' || d.status_banjir === 'SUDAH BANJIR') bc = 'danger';
+          else if (d.status_banjir && (d.status_banjir.includes('GENANGAN') || d.status_banjir.includes('SIAGA') || d.status_banjir.includes('MULAI'))) bc = 'warn';
           banjirEl.className = `ai-val ${bc}`;
         }
         const waterEl = document.getElementById(`aiWater_${areaId}_${suffix}`);
         if (waterEl) {
           waterEl.textContent = d.has_water ? `Terdeteksi (${d.water_area_ratio}%)` : 'Tidak Ada Genangan';
-          waterEl.className = `ai-val ${d.has_water ? (d.water_area_ratio > 15 ? 'danger' : 'warn') : 'safe'}`;
+          waterEl.className = `ai-val ${d.has_water ? (d.water_area_ratio >= 35 ? 'danger' : 'warn') : 'safe'}`;
         }
         const areaEl = document.getElementById(`aiArea_${areaId}_${suffix}`);
         if (areaEl) areaEl.textContent = d.water_level_text;
@@ -997,7 +1063,8 @@
           recEl.className = `ai-val ${riskClass}`;
         }
         
-        showSimVideoStatus(areaId, d.is_flood);
+        applyAreaStatus(d.area_status);
+        showSimVideoStatus(areaId, d.risk_level === 'critical' || d.water_area_ratio >= 35);
       }
     } catch (e) {
       console.warn("Poll sim status error:", e);
@@ -1010,7 +1077,11 @@
 
   function stopSimulation(areaId) {
     const state = simStates[areaId];
-    if (state) state.running = false;
+    if (state) {
+      state.running = false;
+      (state.timers || []).forEach(clearTimeout);
+      state.timers = [];
+    }
     const btn  = document.getElementById(`simStartBtn_${areaId}`);
     const pill = document.getElementById(`simStatusPill_${areaId}`);
     const vidBox = document.getElementById(`simVideoBox_${areaId}`);
@@ -1052,15 +1123,15 @@
       if (banjirEl) {
         banjirEl.textContent = d.status_banjir;
         let bc = 'safe';
-        if (d.status_banjir && d.status_banjir.includes('BANJIR') && !d.status_banjir.includes('TIDAK')) bc = 'danger';
-        else if (d.status_banjir && d.status_banjir.includes('GENANGAN')) bc = 'warn';
+        if (d.risk_level === 'critical' || d.status_banjir === 'SUDAH BANJIR') bc = 'danger';
+        else if (d.status_banjir && (d.status_banjir.includes('GENANGAN') || d.status_banjir.includes('SIAGA') || d.status_banjir.includes('MULAI'))) bc = 'warn';
         banjirEl.className = `ai-val ${bc}`;
       }
       if (waterEl) {
         waterEl.textContent = d.has_water ? `Terdeteksi (${d.water_area_ratio}%)` : 'Tidak Ada Genangan';
-        waterEl.className = `ai-val ${d.has_water ? (d.water_area_ratio>15?'danger':'warn') : 'safe'}`;
+        waterEl.className = `ai-val ${d.has_water ? (d.water_area_ratio>=35?'danger':'warn') : 'safe'}`;
       }
-      const faseLabel = framePos==='start'?'Fase Awal (Normal)':framePos==='end'?'Fase Akhir (Banjir)':'Fase Tengah';
+      const faseLabel = framePos==='start'?'Fase Awal (Normal)':framePos==='end'?'Fase Akhir (Banjir)':framePos==='middle'?'Fase Tengah':'Full Video';
       const rainEl  = document.getElementById(`aiRain_${areaId}_sim`);
       const areaEl  = document.getElementById(`aiArea_${areaId}_sim`);
       const recEl   = document.getElementById(`aiRec_${areaId}_sim`);
@@ -1089,8 +1160,9 @@
       }
 
       // Tampilkan status video (banjir/tidak)
-      showSimVideoStatus(areaId, d.is_flood || (d.has_water && d.water_area_ratio > 10));
+      showSimVideoStatus(areaId, d.risk_level === 'critical' || d.water_area_ratio >= 35);
 
+      applyAreaStatus(d.area_status);
       if (scanSt) scanSt.textContent = `✓ ${faseLabel} — ${d.analyzed_at}`;
       if (d.notif_sent) {
         showToast(`🌊 Notifikasi banjir terkirim! (${d.status_banjir})`, 'error');

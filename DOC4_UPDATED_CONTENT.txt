@@ -1,0 +1,543 @@
+SOURCE CODE REPOSITORY & DEPLOYMENT
+CAPSTONE PROJECT 2026
+
+JUDUL PROYEK:
+Early Warning Flood Application
+
+DOKUMEN IMPLEMENTASI: DOC-4
+Status: Final Implementation - Updated Repository Detail
+
+TIM PENGEMBANG:
+NIM	NAMA MAHASISWA	PERAN	TANDA TANGAN
+23502310008	Felix Tan	Project Manager
+23502310009	George Vigo Valentinno Djohan	Developer / Tester
+23502310022	Owen Christian Soegiarto	Developer / Tester
+23502310028	Stevano Ian Fernandy	Developer / Tester
+23502310029	Steven Valerian	Developer / Tester
+
+PERSETUJUAN:
+Dosen Pembimbing	Tanggal	Tanda Tangan
+Bpk. Dosen Pembimbing, M.Kom.	........................	_____________
+
+BSD City, Tangerang - 2026
+
+INFORMASI DOKUMEN
+Atribut	Keterangan
+ID Dokumen	DOC-4-SE2026-K4
+Nama Dokumen	Source Code Repository & Deployment
+Judul Proyek	Early Warning Flood Application
+Repository Final	https://github.com/Phloee/Early_Warning_Flood_Application.git
+Referensi SDD	DOC-3-SE2026-K4 v1.0
+Pemilik Dokumen	Prodi Rekayasa Perangkat Lunak
+Tanggal Rilis	12 Mei 2026
+Versi	1.1
+Status	Final Implementation Updated
+
+RIWAYAT PERUBAHAN
+Versi	Tanggal	Penulis	Deskripsi Perubahan
+0.1	20 Jan 2026	Tim	Draft awal arsitektur dan skema database
+0.5	24 Jan 2026	Tim	Penambahan spesifikasi API, UI Flow, dan deployment plan
+1.0	27 Jan 2026	Tim	Finalisasi desain untuk fase implementasi
+1.1	12 Mei 2026	Tim	Update detail repository GitHub, struktur project aktual, integrasi YOLOv8 Roboflow, dashboard admin, CCTV, video simulasi, status aman/siaga/banjir, dan panduan run lokal
+
+DAFTAR ISI
+BAGIAN 1: PENDAHULUAN
+BAGIAN 2: MANAJEMEN SOURCE CODE (REPOSITORY)
+BAGIAN 3: STANDAR KODE & STRUKTUR DIREKTORI
+BAGIAN 4: CATATAN IMPLEMENTASI
+BAGIAN 5: DETAIL FITUR DAN MODUL SISTEM
+BAGIAN 6: COMPUTER VISION, DATASET, DAN YOLOv8
+BAGIAN 7: PANDUAN DEPLOYMENT DAN RUN LOKAL
+LAMPIRAN
+
+BAGIAN 1: PENDAHULUAN
+
+1.1 Tujuan Dokumen
+Dokumen ini menjelaskan implementasi final proyek Early Warning Flood Application berdasarkan source code aktual pada repository GitHub: https://github.com/Phloee/Early_Warning_Flood_Application.git. Dokumen ini memuat detail source code, struktur direktori, modul backend, modul frontend, dashboard admin, integrasi CCTV, integrasi video simulasi, integrasi dataset Roboflow YOLOv8, alur analisis AI, serta panduan menjalankan aplikasi secara lokal.
+
+1.2 Ruang Lingkup
+Ruang lingkup implementasi meliputi:
+- Backend Django untuk REST API, dashboard, autentikasi, manajemen wilayah, CCTV, cuaca, notifikasi, dan log analisis banjir.
+- Frontend Flutter untuk aplikasi mobile Jakairta.
+- Dashboard web untuk operator/admin yang menampilkan area, CCTV live, simulasi video, status banjir, status genangan, rekomendasi, notifikasi, dan CRUD data.
+- Computer Vision YOLOv8 untuk mendeteksi kondisi aman, siaga, dan banjir dari frame CCTV atau video simulasi.
+- Dataset Roboflow berformat YOLOv8 dengan label aman, banjir, dan siaga.
+- Model hasil training YOLOv8 best.pt yang digunakan oleh backend untuk inferensi.
+- Database SQLite pada development lokal dan dukungan DATABASE_URL untuk PostgreSQL pada production.
+- API documentation menggunakan drf-spectacular Swagger/OpenAPI.
+
+1.3 Definisi & Akronim
+Akronim	Definisi
+API	Application Programming Interface
+BMKG	Badan Meteorologi, Klimatologi, dan Geofisika
+BPBD	Badan Penanggulangan Bencana Daerah
+CCTV	Closed Circuit Television
+CV	Computer Vision
+Django	Framework backend Python berbasis MVT
+DRF	Django REST Framework
+FCM	Firebase Cloud Messaging
+JWT	JSON Web Token untuk autentikasi
+MVT	Model-View-Template Django
+OpenCV	Library pengolahan gambar/video
+Roboflow	Platform dataset labeling dan export format YOLO
+YOLOv8	You Only Look Once v8, model deteksi objek real-time
+best.pt	File weight model hasil training YOLOv8
+
+BAGIAN 2: MANAJEMEN SOURCE CODE (REPOSITORY)
+
+2.1 Tautan Repository
+Komponen	URL Repositori	Keterangan
+Full Project Repository	https://github.com/Phloee/Early_Warning_Flood_Application.git	Repository utama berisi backend Django, frontend Flutter, dataset/model pendukung, dan file konfigurasi project
+Backend Django	Folder jakairta_backend/ pada repository utama	API, dashboard, database models, YOLO inference, CCTV, simulasi, cuaca, notifikasi
+Frontend Flutter	Folder jakairta/ pada repository utama	Aplikasi mobile Flutter Jakairta
+YOLO Vision	Folder yolov8_flood_vision/ dan jakairta_backend/models/flood/	Model best.pt, training result, scanner, dan integrasi vision
+Dataset	Folder datasets/banijirbjir_v1/	Dataset Roboflow YOLOv8 dengan label aman, banjir, siaga
+
+2.2 Strategi Branching
+Branch	Fungsi
+main	Branch utama untuk versi stabil dan siap demo/submission
+develop	Branch integrasi fitur sebelum masuk main
+feature/*	Branch pengerjaan fitur seperti feature/cctv, feature/dashboard, feature/vision
+hotfix/*	Branch perbaikan bug kritis pada versi stabil
+
+Alur kerja yang digunakan: clone repository, buat branch fitur, implementasi, test lokal, review, lalu merge ke branch stabil. Untuk konteks pengerjaan capstone, repository utama menyatukan backend dan frontend agar reviewer dapat mengakses seluruh source code dari satu link.
+
+2.3 Aturan Commit
+Format commit mengikuti Conventional Commits:
+<type>(<scope>): <deskripsi singkat>
+
+Contoh:
+- feat(cctv): add YOLO flood analysis endpoint
+- feat(dashboard): add simulation video analyzer
+- fix(vision): prevent low confidence bbox from becoming critical flood
+- fix(simulation): separate live CCTV status from simulation status
+- docs(doc4): update deployment and repository documentation
+- chore(deps): add ultralytics and opencv dependencies
+
+BAGIAN 3: STANDAR KODE & STRUKTUR DIREKTORI
+
+3.1 Struktur Direktori Utama
+Early_Warning_Flood_Application/
+  jakairta_backend/          Backend Django
+  jakairta/                  Frontend Flutter
+  datasets/banijirbjir_v1/   Dataset Roboflow YOLOv8 final
+  yolov8_flood_vision/       Training output, model vision, scanner script
+  banjir (1)/banjir/         Dataset/model lama sebagai referensi awal
+  Jakairta.pdf               Dokumen pendukung awal
+  .gitignore                 Konfigurasi file yang tidak masuk Git
+
+3.2 Struktur Backend Django
+jakairta_backend/
+  manage.py                  Entry point Django command
+  config/
+    settings.py              Konfigurasi Django, REST framework, CORS, media, static, API eksternal
+    urls.py                  Routing global admin, dashboard, API, schema, docs
+    wsgi.py                  WSGI application
+  apps/
+    users/                   Custom user, autentikasi, JWT, serializer user
+    areas/                   Manajemen wilayah, status banjir, status genangan, saved area
+    weather/                 Data cuaca, prakiraan, BMKG/OpenWeather/WeatherAPI
+    cctv/                    Kamera CCTV, video simulasi, log analisis, YOLO vision helper
+    notifications/           Riwayat dan endpoint notifikasi
+    dashboard/               Dashboard web admin/operator, CRUD, stream simulation, analyzer endpoint
+  models/flood/best.pt       Model YOLOv8 aktif untuk backend
+  media/                     Upload video simulasi dan media runtime
+  templates/dashboard/       HTML dashboard dan login
+  requirements.txt           Dependency Python
+  db.sqlite3                 Database development lokal
+  .env                       Environment lokal
+  .env.example               Template environment
+
+3.3 Struktur Frontend Flutter
+jakairta/
+  lib/main.dart              Entry point aplikasi Flutter
+  pubspec.yaml               Dependency dan konfigurasi Flutter
+  test/widget_test.dart      Template pengujian widget
+
+Dependency Flutter utama:
+- flutter SDK
+- cupertino_icons
+- google_fonts
+- http
+- video_player
+- flutter_lints untuk linting
+
+3.4 Penerapan Clean Code
+Aspek	Implementasi
+Modularisasi	Backend dipisah per apps: users, areas, weather, cctv, notifications, dashboard
+Naming	Python menggunakan snake_case untuk function/variable dan PascalCase untuk class
+Configuration	Environment variable via django-environ dan file .env
+Serialization	DRF serializers digunakan untuk API response/request
+Routing	URL dipisah per module agar maintainable
+Validation	Model choices dipakai untuk status area, CCTV, log banjir, dan notifikasi
+Documentation	Swagger/OpenAPI tersedia di /api/docs/
+Separation of Concerns	vision.py fokus ke analisis frame/video, views.py fokus HTTP/dashboard, models.py fokus schema database
+
+BAGIAN 4: CATATAN IMPLEMENTASI
+
+4.1 Sprint 1 - Fondasi & Autentikasi
+Item	Status	Catatan
+Setup repository GitHub	Selesai	Repository final: https://github.com/Phloee/Early_Warning_Flood_Application.git
+Setup backend Django	Selesai	Django 4.2.16, DRF, JWT, CORS, Swagger
+Setup frontend Flutter	Selesai	Project Flutter jakairta dengan SDK Dart 3.7.2
+Database awal	Selesai	SQLite development, mendukung DATABASE_URL untuk PostgreSQL
+Custom User & Auth	Selesai	AUTH_USER_MODEL users.User, JWT via simplejwt
+
+4.2 Sprint 2 - Core Flood Monitoring
+Item	Status	Catatan
+Area Management	Selesai	Model Area menyimpan nama lokasi, district, koordinat, status, water level, status genangan, area tergenang
+Weather Integration	Selesai	Model WeatherData dan WeatherForecast mendukung BMKG/OpenWeather/WeatherAPI
+CCTV Management	Selesai	Model CCTVCamera menyimpan stream URL, thumbnail, detection result, confidence, timestamp
+Flood Status Classification	Selesai	Status utama: aman, siaga, banjir
+Flood Analysis Log	Selesai	Setiap analisis AI dicatat dalam FloodAnalysisLog untuk riwayat dan evaluasi
+
+4.3 Sprint 3 - Dashboard & Simulasi
+Item	Status	Catatan
+Dashboard Web	Selesai	/dashboard/ menampilkan area, CCTV, status, rekomendasi, notifikasi, CRUD
+Login Dashboard	Selesai	/dashboard/login/
+CRUD Area	Selesai	Tambah/edit/delete wilayah
+CRUD Camera	Selesai	Tambah/edit/delete CCTV
+CRUD Video Simulasi	Selesai	Upload dan kelola video simulasi
+CCTV Live Analyzer	Selesai	POST /dashboard/analyze/<camera_id>/
+Simulation Analyzer	Selesai	POST /dashboard/analyze_sim/<sim_id>/
+Simulation Stream	Selesai	/dashboard/stream_sim/<sim_id>/ menampilkan video dengan overlay deteksi
+Latest Analysis API	Selesai	/dashboard/latest_analysis/<area_id>/ untuk polling hasil terbaru CCTV
+
+4.4 Sprint 4 - YOLOv8, Roboflow Dataset, Stabilization
+Item	Status	Catatan
+Dataset Roboflow YOLOv8	Selesai	Dataset banijirbjir_v1 digunakan dengan label aman, banjir, siaga
+Training YOLOv8	Selesai	Training dari yolov8n.pt menghasilkan best.pt 3-class
+Model Deployment	Selesai	best.pt dipasang di jakairta_backend/models/flood/best.pt dan yolov8_flood_vision/best.pt
+Logic aman/siaga/banjir	Selesai	Aman = tidak ada air; siaga = genangan awal; banjir = area air dominan/critical
+False Positive Guard	Selesai	Deteksi confidence rendah tidak otomatis menjadi banjir critical
+Simulation Phase Logic	Selesai	Fase awal aman, fase tengah siaga, fase akhir banjir
+Status Separation	Selesai	Status simulasi tidak meng-overwrite status CCTV live
+
+BAGIAN 5: DETAIL FITUR DAN MODUL SISTEM
+
+5.1 Modul Users
+Fungsi:
+- Custom user model untuk autentikasi pengguna.
+- Endpoint auth melalui /api/auth/.
+- JWT authentication menggunakan djangorestframework-simplejwt.
+- Mendukung blacklisting refresh token.
+
+5.2 Modul Areas
+Fungsi:
+- Menyimpan wilayah pantauan banjir.
+- Field penting: name, district, sub_district, latitude, longitude, status, water_level_cm, water_level_change, status_genangan, area_tergenang, ai_confidence_level, last_ai_detected_at.
+- Status menggunakan pilihan: aman, siaga, potensial, banjir.
+- SavedArea menyimpan wilayah favorit user.
+
+5.3 Modul Weather
+Fungsi:
+- Menyimpan data cuaca real-time dan forecast.
+- WeatherData menyimpan source, temperature, humidity, rainfall, wind_speed, description, weather_code, raw_data, recorded_at.
+- WeatherForecast menyimpan forecast_time, rainfall, rainfall_probability, description, raw_data.
+- Sumber yang didukung: BMKG, OpenWeatherMap, WeatherAPI.com.
+
+5.4 Modul CCTV
+Fungsi:
+- Menyimpan kamera CCTV live.
+- Menyimpan video simulasi.
+- Menyimpan log analisis banjir.
+- Integrasi YOLOv8 melalui apps/cctv/vision.py.
+
+CCTVCamera:
+- area, name, location_description, stream_url, thumbnail_url, is_active.
+- detection_result: no_flood, mulai_banjir, flood, uncertain, offline.
+- confidence_score dan last_detected_at.
+
+VideoSimulasi:
+- area, title, video_file, is_active.
+- Digunakan untuk demo analisis banjir berdasarkan video.
+
+FloodAnalysisLog:
+- source_type: cctv atau simulation.
+- status_banjir: aman, siaga, banjir, banjir_ringan, hanya_genangan.
+- water_area_ratio: estimasi area genangan 0-100%.
+- risk_level: safe, warning, critical.
+- confidence_score: rata-rata confidence model.
+- model_used: best.pt.
+- frame_size, evidence, frame_results.
+- Method tambahan: get_location_flood_probability dan get_adaptive_threshold.
+
+5.5 Modul Notifications
+Fungsi:
+- Menyimpan riwayat notifikasi untuk user.
+- Tipe notifikasi: flood_alert, weather_alert, status_update, info.
+- Field: user, title, body, notif_type, area, is_read, sent_at.
+- Dashboard menyediakan endpoint notification polling dan mark read.
+
+5.6 Dashboard Admin/Operator
+Endpoint utama:
+- /dashboard/ : halaman dashboard utama
+- /dashboard/login/ : login admin/operator
+- /dashboard/logout/ : logout
+- /dashboard/analyze/<camera_id>/ : analisis CCTV
+- /dashboard/analyze_sim/<sim_id>/ : analisis video simulasi
+- /dashboard/stream_sim/<sim_id>/ : stream video simulasi dengan overlay
+- /dashboard/latest_analysis/<area_id>/ : hasil analisis CCTV terbaru
+- /dashboard/api/status/ : status API dashboard
+- /dashboard/api/area-status-stream/ : status stream area
+- /dashboard/api/notifications/ : list notifikasi
+- /dashboard/api/notifications/read/ : tandai notifikasi terbaca
+- /dashboard/area/add/edit/delete : CRUD wilayah
+- /dashboard/camera/add/edit/delete : CRUD CCTV
+- /dashboard/sim/add/edit/delete : CRUD video simulasi
+
+Fitur dashboard:
+- Card wilayah Pancoran/Cikoko atau area lain.
+- Status syarat cuaca dan syarat CCTV.
+- CCTV live embed/stream.
+- Panel Status Banjir, Status Genangan, Prediksi Hujan, Area Tergenang, Rekomendasi.
+- Tombol Kirim Peringatan Darurat.
+- Video simulasi dengan tombol Mulai/Stop Simulasi.
+- Progress fase simulasi.
+- Overlay bounding box YOLO.
+- Status aman/siaga/banjir realtime.
+
+BAGIAN 6: COMPUTER VISION, DATASET, DAN YOLOv8
+
+6.1 Dataset Roboflow
+Dataset yang digunakan berasal dari export Roboflow YOLOv8:
+- Folder: datasets/banijirbjir_v1/
+- File konfigurasi: datasets/banijirbjir_v1/data.yaml
+- Format: YOLOv8 detection dataset
+- Source metadata: workspace owenval-s-workspace, project banijirbjir, version 1
+- URL dataset: https://universe.roboflow.com/owenval-s-workspace/banijirbjir/dataset/1
+- License: CC BY 4.0
+
+Isi data.yaml:
+train: train/images
+val: valid/images
+test: test/images
+nc: 3
+names: ['aman', 'banjir', 'siaga']
+
+Label:
+- aman: kondisi tidak banjir/tidak ada genangan signifikan.
+- siaga: mulai terlihat genangan atau air awal.
+- banjir: area air dominan/banjir jelas.
+
+6.2 Training Model
+Training dilakukan menggunakan Ultralytics YOLOv8 dari base model yolov8n.pt. Model lama tidak digunakan sebagai starting point karena model lama hanya mengenal satu class banjir, sedangkan dataset baru memiliki tiga class: aman, banjir, siaga.
+
+Output training:
+- yolov8_flood_vision/runs/banijirbjir_v1/weights/best.pt
+- yolov8_flood_vision/runs/banijirbjir_v1/weights/last.pt
+
+Deployment model:
+- jakairta_backend/models/flood/best.pt sebagai model aktif backend.
+- yolov8_flood_vision/best.pt sebagai copy model vision/training folder.
+
+6.3 Integrasi Model ke Backend
+File utama:
+- jakairta_backend/apps/cctv/vision.py
+
+Fungsi penting:
+- get_flood_model_path(settings): mencari model best.pt dari beberapa path kandidat.
+- load_flood_model(model_path): load YOLO model dengan cache.
+- capture_frame(source): mengambil frame dari stream/video.
+- analyze_frame(frame, settings, conf=0.25, area=None): inferensi YOLO pada satu frame.
+- aggregate_frame_results(frame_results): menggabungkan hasil beberapa frame.
+- analyze_video_source(source, settings, area=None, conf=0.25): analisis multi-frame dari video/stream.
+
+6.4 Logika Analisis
+Alur analisis CCTV:
+1. Dashboard memanggil /dashboard/analyze/<camera_id>/.
+2. Backend membaca stream CCTV.
+3. Sistem mengambil beberapa frame dari stream.
+4. YOLOv8 mendeteksi label aman, siaga, banjir.
+5. Backend menghitung water_area_ratio, confidence_score, risk_level.
+6. Hasil disimpan ke FloodAnalysisLog.
+7. Area status diperbarui hanya dari CCTV real.
+8. Dashboard menampilkan hasil terbaru.
+
+Alur analisis simulasi:
+1. Dashboard memanggil /dashboard/analyze_sim/<sim_id>/.
+2. Backend membaca video simulasi.
+3. Sistem menganalisis berdasarkan fase: start, middle, end, atau auto.
+4. Fase start diperlakukan sebagai baseline aman.
+5. Fase middle menunjukkan siaga/mulai banjir jika air mulai tampak.
+6. Fase end menunjukkan banjir jika air dominan.
+7. Hasil simulasi disimpan sebagai log simulation.
+8. Hasil simulasi tidak mengubah status live area/CCTV agar tidak mencampur data uji dengan kondisi real.
+
+6.5 Aturan Status
+Status	Kondisi	Risk Level	Rekomendasi
+AMAN	Tidak ada air atau deteksi lemah/noisy	Safe	Kondisi aman, tetap monitoring
+SIAGA	Ada genangan awal atau air mulai muncul	Warning	Pantau kondisi, ada potensi genangan
+BANJIR	Air dominan/luas dan confidence kuat	Critical	Evakuasi/ambil tindakan darurat
+
+6.6 Penanganan False Positive
+Beberapa CCTV dapat menghasilkan refleksi jalan, bayangan pohon, kendaraan, atau permukaan beton yang terlihat seperti air. Oleh karena itu sistem menerapkan guard:
+- Confidence rendah tidak langsung menjadi BANJIR.
+- Label siaga tidak otomatis naik ke critical.
+- Jika status final AMAN, water_area_ratio dikembalikan ke 0.0 agar UI tidak menampilkan AMAN tetapi area tergenang tinggi.
+- Simulasi tidak boleh meng-overwrite status CCTV real.
+- CCTV real dan video simulasi dipisahkan secara log dan status.
+
+BAGIAN 7: PANDUAN DEPLOYMENT DAN RUN LOKAL
+
+7.1 Environment Requirements
+Backend:
+- Python 3.12+
+- Django 4.2.16
+- Django REST Framework 3.15.2
+- Ultralytics YOLOv8
+- OpenCV Python
+- Pillow
+- pandas, statsmodels, pmdarima
+- django-environ
+- django-cors-headers
+- drf-spectacular
+- SQLite untuk development atau PostgreSQL melalui DATABASE_URL
+
+Frontend:
+- Flutter SDK
+- Dart SDK ^3.7.2
+- Dependency: http, google_fonts, video_player
+
+7.2 Environment Variables Backend
+Variable	Keterangan
+SECRET_KEY	Django secret key
+DEBUG	True untuk development, False untuk production
+DATABASE_URL	Connection string database; default sqlite:///db.sqlite3
+ALLOWED_HOSTS	Daftar host yang diizinkan
+BMKG_API_BASE_URL	Base URL API BMKG
+WEATHER_API_KEY	API key Weather API provider
+WEATHER_API_BASE_URL	Base URL Weather API provider
+BPBD_API_BASE_URL	Base URL data BPBD DKI Jakarta
+FCM_SERVER_KEY	Server key Firebase Cloud Messaging
+CORS_ALLOWED_ORIGINS	Origin frontend yang diizinkan
+FLOOD_MODEL_PATH	Opsional, path custom model YOLO best.pt
+
+7.3 Run Backend Lokal
+Langkah:
+1. Clone repository:
+   git clone https://github.com/Phloee/Early_Warning_Flood_Application.git
+2. Masuk ke folder project:
+   cd Early_Warning_Flood_Application/jakairta_backend
+3. Buat virtual environment:
+   python -m venv venv
+4. Aktifkan virtual environment:
+   source venv/bin/activate
+5. Install dependency:
+   pip install -r requirements.txt
+6. Copy environment:
+   cp .env.example .env
+7. Isi SECRET_KEY dan konfigurasi lain pada .env.
+8. Jalankan migrasi:
+   python manage.py migrate
+9. Buat superuser:
+   python manage.py createsuperuser
+10. Jalankan server development:
+   python manage.py runserver 127.0.0.1:8080
+11. Buka dashboard:
+   http://127.0.0.1:8080/dashboard/
+12. Buka API docs:
+   http://127.0.0.1:8080/api/docs/
+
+7.4 Run Frontend Flutter Lokal
+Langkah:
+1. Masuk ke folder Flutter:
+   cd Early_Warning_Flood_Application/jakairta
+2. Install dependency:
+   flutter pub get
+3. Jalankan aplikasi:
+   flutter run
+4. Build APK:
+   flutter build apk --release
+
+7.5 Deployment Production
+Rekomendasi deployment:
+- Backend Django menggunakan Gunicorn + Whitenoise.
+- Database production menggunakan PostgreSQL.
+- Static files dikumpulkan melalui python manage.py collectstatic.
+- ALLOWED_HOSTS diisi domain production.
+- DEBUG=False.
+- Media file disimpan di storage server/cloud.
+- Model best.pt disimpan di path stabil dan dapat dioverride via FLOOD_MODEL_PATH.
+- API docs tersedia di /api/docs/ untuk reviewer/developer.
+
+7.6 Endpoint Penting
+Kategori	Endpoint	Fungsi
+Admin	/admin/	Django admin
+Dashboard	/dashboard/	Dashboard operator
+Auth	/api/auth/	Login/register/JWT user
+Areas	/api/areas/	Data wilayah dan status banjir
+Weather	/api/weather/	Data cuaca dan forecast
+CCTV	/api/cctv/	Data kamera dan analisis CCTV
+Notifications	/api/notifications/	Notifikasi user
+Docs	/api/docs/	Swagger OpenAPI
+Schema	/api/schema/	OpenAPI schema JSON/YAML
+Redoc	/api/redoc/	Dokumentasi API Redoc
+
+BAGIAN 8: DETAIL PERUBAHAN DARI DOC-3
+
+8.1 Perubahan Sumber Data
+Desain awal menggunakan sensor IoT fisik. Implementasi final mengganti pendekatan tersebut dengan kombinasi:
+- API BMKG untuk data cuaca resmi.
+- Weather API/OpenWeather untuk data cuaca tambahan.
+- CCTV stream dan video simulasi sebagai sumber visual genangan.
+- YOLOv8 sebagai detektor visual status banjir.
+
+Alasan perubahan:
+- IoT fisik membutuhkan biaya instalasi, maintenance, izin pemasangan, dan operasional lapangan.
+- Untuk capstone, data publik dan CCTV lebih realistis serta dapat diuji langsung.
+- Computer Vision memberikan nilai tambah karena sistem dapat menilai kondisi visual genangan.
+
+8.2 Perubahan Arsitektur AI
+Desain awal hanya memprediksi berdasarkan data ketinggian air/cuaca. Implementasi final menambahkan pipeline Computer Vision:
+- Dataset Roboflow berlabel.
+- Training YOLOv8.
+- Inference real-time/multi-frame.
+- Status aman, siaga, banjir.
+- Evidence per-frame.
+- Logging hasil analisis.
+
+8.3 Perubahan Dashboard
+Dashboard final bukan hanya monitoring statis, tetapi memiliki:
+- Live CCTV panel.
+- Simulation video panel.
+- CRUD kamera dan simulasi.
+- Status genangan dan area tergenang.
+- Overlay bounding box.
+- Rekomendasi aksi.
+- Notifikasi banjir.
+- Separation antara data live dan data simulasi.
+
+LAMPIRAN
+
+A. Repository Final
+https://github.com/Phloee/Early_Warning_Flood_Application.git
+
+B. File Penting
+- jakairta_backend/apps/cctv/vision.py
+- jakairta_backend/apps/dashboard/views.py
+- jakairta_backend/apps/dashboard/urls.py
+- jakairta_backend/apps/cctv/models.py
+- jakairta_backend/apps/areas/models.py
+- jakairta_backend/config/settings.py
+- jakairta_backend/config/urls.py
+- jakairta_backend/requirements.txt
+- jakairta/pubspec.yaml
+- datasets/banijirbjir_v1/data.yaml
+- jakairta_backend/models/flood/best.pt
+
+C. Bukti Integrasi Dataset
+Dataset Roboflow banijirbjir_v1 sudah digunakan sebagai dataset training YOLOv8 dengan 3 class: aman, banjir, siaga. Model hasil training disimpan sebagai best.pt dan dipakai backend melalui get_flood_model_path().
+
+D. Catatan Keterbatasan
+- Akurasi YOLO sangat bergantung pada jumlah dan variasi dataset.
+- Dataset kecil dapat menyebabkan false positive pada refleksi jalan, bayangan, beton basah, dan objek kendaraan.
+- Untuk peningkatan akurasi production, perlu penambahan data label dari CCTV nyata, kondisi hujan, kondisi siang/malam, sudut kamera berbeda, kondisi aman, siaga awal, dan banjir total.
+
+E. Rekomendasi Pengembangan Lanjutan
+- Tambah dataset minimal 300-500 gambar per class.
+- Label ulang frame simulasi yang salah/ambigu di Roboflow.
+- Tambahkan confidence calibration per class.
+- Tambahkan segmentation model jika ingin estimasi area genangan lebih akurat.
+- Deploy backend ke cloud dengan PostgreSQL dan storage media terpisah.
+- Tambahkan CI/CD GitHub Actions untuk test dan deployment.

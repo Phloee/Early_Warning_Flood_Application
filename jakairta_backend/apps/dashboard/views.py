@@ -18,6 +18,175 @@ from apps.weather.models import WeatherForecast, WeatherData
 from apps.notifications.models import Notification
 
 
+_AREA_STATUS_EVENTS = []
+BANJIR_RATIO_THRESHOLD = 35.0
+SIAGA_RATIO_THRESHOLD = 5.0
+
+
+def _confidence_rank(level):
+    return {'low': 1, 'medium': 2, 'high': 3}.get(str(level or '').lower(), 0)
+
+
+def _normalize_ai_status_payload(payload):
+    """Keep status labels consistent without promoting weak detections to BANJIR.
+
+    Important: the YOLO layer already separates low-confidence/broad false-positive
+    boxes into `siaga`. Dashboard normalization must not turn that back into
+    critical BANJIR only because the bbox area is large.
+    """
+    if not payload:
+        return payload
+    water_ratio = round(float(payload.get('water_area_ratio') or 0.0), 1)
+    source_status = str(payload.get('status_banjir') or '').lower()
+    source_risk = str(payload.get('risk_level') or '').lower()
+    source_conf = str(payload.get('confidence') or 'low').lower()
+    conf_score = float(payload.get('confidence_score') or 0.0)
+    has_water = bool(payload.get('has_water') or payload.get('flood_detected') or payload.get('is_flood'))
+
+    # Only allow CRITICAL BANJIR when the detector itself says banjir and the
+    # signal is strong enough. Large low-confidence boxes stay SIAGA.
+    strong_banjir = (
+        has_water
+        and source_status == 'banjir'
+        and water_ratio >= BANJIR_RATIO_THRESHOLD
+        and (_confidence_rank(source_conf) >= _confidence_rank('medium') or conf_score >= 60)
+    )
+
+    if strong_banjir:
+        status, camera_status, risk, confidence = 'banjir', 'flood', 'critical', source_conf if source_conf in ('medium', 'high') else 'high'
+        water_level, recommendation = 'Tinggi (Parah)', 'EVAKUASI SEGERA! Kondisi Parah.'
+        is_flood = True
+    elif has_water and (water_ratio >= SIAGA_RATIO_THRESHOLD or source_status == 'siaga' or source_risk == 'warning'):
+        status, camera_status, risk, confidence = 'siaga', 'mulai_banjir', 'warning', 'medium' if source_conf != 'low' else 'low'
+        water_level, recommendation = 'Rendah', 'Pantau kondisi, ada potensi genangan.'
+        is_flood = True
+    else:
+        status, camera_status, risk, confidence = 'aman', 'no_flood', 'safe', 'low'
+        water_level, recommendation = 'Aman', 'Kondisi aman, tetap monitoring.'
+        is_flood = False
+        water_ratio = 0.0
+
+    payload.update({
+        'status_banjir': status,
+        'camera_status': camera_status,
+        'risk_level': risk,
+        'confidence': confidence,
+        'has_water': is_flood,
+        'flood_detected': is_flood,
+        'is_flood': is_flood,
+        'water_area_ratio': water_ratio,
+        'water_level_text': water_level,
+        'recommendation': recommendation,
+    })
+    return payload
+
+
+def _area_status_payload(area):
+    return {
+        'wilayah_id': area.id,
+        'area_id': area.id,
+        'status_banjir': area.status,
+        'status_genangan': area.status_genangan,
+        'area_tergenang': round(float(area.area_tergenang or 0.0), 1),
+        'confidence': area.ai_confidence_level or 'low',
+        'updated_at': area.updated_at.isoformat() if area.updated_at else timezone.now().isoformat(),
+    }
+
+
+def _broadcast_area_status(area):
+    payload = _area_status_payload(area)
+    _AREA_STATUS_EVENTS.append(payload)
+    del _AREA_STATUS_EVENTS[:-50]
+    return payload
+
+
+def update_wilayah_status(area, *, flood_detected=None, confidence='low', water_ratio=0.0, final_status=None):
+    """Sync AI detection result into the live Area status card fields."""
+    if not area:
+        return None
+
+    confidence = str(confidence or 'low').lower()
+    water_ratio = round(float(water_ratio or 0.0), 1)
+
+    # Product rule: broad flooding starts at >=35%. Anything below that is SIAGA.
+    if final_status == 'banjir' and water_ratio < BANJIR_RATIO_THRESHOLD:
+        final_status = 'siaga' if water_ratio >= SIAGA_RATIO_THRESHOLD else 'aman'
+
+    if final_status:
+        status = str(final_status).lower()
+        flood_detected = status in ('banjir', 'siaga')
+    elif flood_detected is None:
+        flood_detected = False
+
+    if final_status == 'banjir' or (flood_detected and water_ratio >= BANJIR_RATIO_THRESHOLD and _confidence_rank(confidence) >= _confidence_rank('medium')):
+        area.status = FloodStatus.BANJIR
+        area.status_genangan = 'Ada Genangan'
+    elif final_status == 'siaga' or flood_detected:
+        area.status = FloodStatus.SIAGA
+        area.status_genangan = 'Potensi Genangan'
+    else:
+        area.status = FloodStatus.AMAN
+        area.status_genangan = 'Tidak Ada Genangan'
+
+    area.area_tergenang = water_ratio
+    area.ai_confidence_level = confidence
+    area.last_ai_detected_at = timezone.now()
+    # Keep legacy card/serializer water field meaningful for existing UI/mobile.
+    area.water_level_cm = water_ratio
+    area.save(update_fields=[
+        'status', 'status_genangan', 'area_tergenang', 'ai_confidence_level',
+        'last_ai_detected_at', 'water_level_cm', 'updated_at'
+    ])
+    return _broadcast_area_status(area)
+
+
+def _majority_vote_analyses(analyses):
+    """3-frame majority vote: 2/3 flood => banjir, 1/3 => siaga, 0/3 => aman."""
+    valid = [a for a in analyses if a]
+    flood_count = sum(1 for a in valid if a.get('flood_detected') or a.get('is_flood'))
+    best = max(valid, key=lambda a: (float(a.get('water_area_ratio') or 0), _confidence_rank(a.get('confidence')), float(a.get('confidence_score') or 0))) if valid else {}
+    best_conf = best.get('confidence') or 'low'
+    best_ratio = float(best.get('water_area_ratio') or 0)
+
+    if flood_count >= 2:
+        final_status = 'banjir'
+        final_conf = best_conf if _confidence_rank(best_conf) >= 2 else 'medium'
+        flood_detected = True
+    elif flood_count == 1:
+        final_status = 'siaga'
+        final_conf = 'low'
+        flood_detected = True
+    else:
+        final_status = 'aman'
+        final_conf = 'low'
+        flood_detected = False
+
+    merged = dict(best)
+    merged.update({
+        'flood_detected': flood_detected,
+        'is_flood': flood_detected,
+        'status_banjir': final_status,
+        'camera_status': 'flood' if final_status == 'banjir' else ('mulai_banjir' if final_status == 'siaga' else 'no_flood'),
+        'has_water': flood_detected,
+        'confidence': final_conf,
+        'risk_level': 'critical' if final_status == 'banjir' else ('warning' if final_status == 'siaga' else 'safe'),
+        'water_area_ratio': round(best_ratio, 1),
+        'water_level_text': 'Tinggi' if final_status == 'banjir' else ('Rendah' if final_status == 'siaga' else 'Aman'),
+        'recommendation': 'Segera evakuasi dan pantau jalur aman.' if final_status == 'banjir' else ('Pantau kondisi, ada potensi genangan.' if final_status == 'siaga' else 'Kondisi aman, tetap monitoring.'),
+        'sample_results': [{
+            'frame_position': a.get('frame_position'),
+            'frame_number': a.get('frame_number'),
+            'flood_detected': bool(a.get('flood_detected') or a.get('is_flood')),
+            'confidence': a.get('confidence'),
+            'water_area_ratio': a.get('water_area_ratio'),
+            'status': a.get('status_banjir'),
+        } for a in valid],
+        'flood_votes': flood_count,
+        'total_votes': len(valid),
+    })
+    return merged
+
+
 # ── Helper: Auto-buat notifikasi banjir ke semua admin ──────────────────────────
 def _auto_flood_notification(area, source_name, status_banjir, water_ratio):
     """
@@ -233,7 +402,7 @@ def is_water_region(frame, x1, y1, x2, y2, min_water_ratio=0.40):
     Warna air banjir NYATA:
       - Coklat keruh (lumpur, air tanah) dengan SATURATION tinggi
       - Biru-hijau keruh (sungai) dengan tekstur reflektif
-    
+
     Bukan air (DITOLAK):
       - Hitam pekat -> aspal, motor, ban
       - Abu-abu gelap -> aspal kering/basah malam hari
@@ -338,17 +507,17 @@ def dashboard_home(request):
         cam = area.cameras.filter(is_active=True).first()
         sim = area.simulations.filter(is_active=True).first()
         latest_weather = area.weather_data.order_by('-recorded_at').first()
-        
+
         # Proteksi: Pastikan rain_mm tidak None agar tidak crash saat perbandingan
         rain_mm = float(latest_weather.rainfall or 0.0) if latest_weather else 0.0
-        
+
         weather_met = rain_mm >= 10.0
-        
+
         # Proteksi: Cek status deteksi kamera
         cctv_met = False
         if cam and cam.detection_result:
-             cctv_met = cam.detection_result == CCTVCamera.DetectionResult.FLOOD
-             
+             cctv_met = cam.detection_result in [CCTVCamera.DetectionResult.FLOOD, CCTVCamera.DetectionResult.MULAI_BANJIR]
+
         both_met = weather_met and cctv_met
         areas_data.append({
             'area': area,
@@ -365,7 +534,7 @@ def dashboard_home(request):
     stats = {
         'total_areas': areas.count(),
         'flood_areas': areas.filter(status='banjir').count(),
-        'warning_areas': areas.filter(status='potensial').count(),
+        'warning_areas': areas.filter(status__in=['siaga', 'potensial']).count(),
         'safe_areas': areas.filter(status='aman').count(),
     }
     return render(request, 'dashboard/home.html', {
@@ -718,85 +887,53 @@ def analyze_camera(request, camera_id):
         if not cam.stream_url:
             return JsonResponse({'success': False, 'message': 'Kamera tidak memiliki URL stream.'})
 
-        import cv2, numpy as np
-        from ultralytics import YOLO
-        import os
         from django.conf import settings
+        from apps.cctv.vision import analyze_video_source, normalize_stream_url
 
-        model_path = os.path.join(settings.BASE_DIR, 'best.pt')
-        if not os.path.exists(model_path):
-            model_path = os.path.join(settings.BASE_DIR, '..', 'yolov8_flood_vision', 'best.pt')
-        
-        if not os.path.exists(model_path):
-            return JsonResponse({'success': False, 'message': f'File model (best.pt) tidak ditemukan. Pastikan file ada di {os.path.abspath(model_path)}'})
-
-        stream_url = cam.stream_url
-        if 'balitower.co.id' in stream_url and 'embed.html' in stream_url:
-            stream_url = stream_url.replace('embed.html', 'index.m3u8')
-
-        cap = cv2.VideoCapture(stream_url)
-        ret, frame = cap.read()
-        cap.release()
-        if not ret or frame is None:
-            return JsonResponse({'success': False, 'message': 'Gagal mengambil frame dari stream.'})
-
-        model = YOLO(model_path)
-        results = model(frame, conf=0.5)
-        detections = []
-        h, w = frame.shape[:2]
-        for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                conf = float(box.conf[0])
-                cls_name = model.names[int(box.cls[0])]
-                detections.append({
-                    'class': cls_name,
-                    'confidence': round(conf * 100, 1),
-                    'box': {'x': round(x1/w*100,1), 'y': round(y1/h*100,1),
-                            'w': round((x2-x1)/w*100,1), 'h': round((y2-y1)/h*100,1)},
-                })
-
-        has_water = any(any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']) for d in detections)
-        water_ratio = sum(d['box']['w']*d['box']['h']/10000 for d in detections if any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']))
-        if water_ratio > 15:
-            status = 'banjir'
-            is_flood = True
-        elif water_ratio > 5:
-            status = 'banjir_ringan'
-            is_flood = True
-        elif has_water:
-            status = 'hanya_genangan'
-            is_flood = False
-        else:
-            status = 'aman'
-            is_flood = False
-        risk = 'critical' if is_flood else ('caution' if has_water else 'safe')
+        stream_url = normalize_stream_url(cam.stream_url)
+        try:
+            analysis = _normalize_ai_status_payload(analyze_video_source(stream_url, settings, conf=0.25, area=cam.area))
+        except Exception as frame_error:
+            cam.detection_result = CCTVCamera.DetectionResult.OFFLINE
+            cam.save(update_fields=['detection_result', 'updated_at'])
+            return JsonResponse({'success': False, 'message': str(frame_error), 'stream_url': stream_url})
+        detections = analysis['detections']
+        has_water = analysis['has_water']
+        water_ratio = analysis['water_area_ratio']
+        status = analysis['status_banjir']
+        is_flood = analysis['is_flood']
+        risk = analysis['risk_level']
 
         log = FloodAnalysisLog.objects.create(
             area=cam.area, camera=cam, source_type='cctv', source_name=cam.name,
             status_banjir=status,
             is_flood=is_flood, has_water=has_water,
             water_area_ratio=round(water_ratio, 1),
-            risk_level=risk, total_objects_detected=len(detections),
-            confidence_score=round(sum(d['confidence'] for d in detections)/max(len(detections),1), 1),
-            water_level_text='Tinggi' if water_ratio > 20 else ('Sedang' if water_ratio > 5 else 'Rendah'),
+            risk_level=risk, total_objects_detected=analysis['total_objects_detected'],
+            confidence_score=analysis['confidence_score'],
+            model_used=analysis['model_used'], frame_size=analysis['frame_size'],
+            evidence=analysis.get('evidence', ''), frame_results=analysis.get('frame_results', []),
+            water_level_text=analysis['water_level_text'],
             rain_intensity='Tidak diketahui',
-            recommendation='Segera evakuasi!' if is_flood else 'Pantau terus kondisi.',
+            recommendation=analysis['recommendation'],
         )
 
-        # Update Area status directly for real-time dashboard
-        if cam.area:
-            if water_ratio > 15:
-                cam.area.status = 'banjir'
-            elif water_ratio > 5:
-                cam.area.status = 'potensial'
-            else:
-                cam.area.status = 'aman'
-            cam.area.save()
+        cam.detection_result = analysis['camera_status']
+        cam.confidence_score = analysis['confidence_score'] / 100 if analysis['confidence_score'] > 1 else analysis['confidence_score']
+        cam.last_detected_at = timezone.now()
+        cam.save(update_fields=['detection_result', 'confidence_score', 'last_detected_at', 'updated_at'])
+
+        area_status_event = update_wilayah_status(
+            cam.area,
+            final_status=analysis['status_banjir'],
+            flood_detected=analysis['flood_detected'],
+            confidence=analysis['confidence'],
+            water_ratio=water_ratio,
+        )
 
         # ── Auto-notifikasi ke admin jika terdeteksi banjir ──
         notif_sent = False
-        if is_flood or (has_water and water_ratio > 10):
+        if status == 'banjir':
             notif_sent = _auto_flood_notification(
                 area=cam.area,
                 source_name=cam.name,
@@ -811,7 +948,15 @@ def analyze_camera(request, camera_id):
             'detections': detections, 'water_level_text': log.water_level_text,
             'rain_intensity': log.rain_intensity, 'recommendation': log.recommendation,
             'analyzed_at': log.analyzed_at.strftime('%H:%M:%S'),
-            'confidence_score': 100.0,
+            'confidence_score': analysis['confidence_score'],
+            'model_used': analysis['model_used'],
+            'frame_size': analysis['frame_size'],
+            'confidence': analysis['confidence'],
+            'flood_detected': analysis['flood_detected'],
+            'sample_results': analysis.get('sample_results', []),
+            'frame_results': analysis.get('frame_results', []),
+            'evidence': analysis.get('evidence', ''),
+            'area_status': area_status_event,
             'grass_reference': None,
             'notif_sent': notif_sent,
         })
@@ -828,7 +973,8 @@ def analyze_sim(request, sim_id):
     Analisis video simulasi dengan posisi frame yang dapat dikonfigurasi.
     Parameter POST:
     - frame_position: 'start' (awal video = tidak banjir), 'middle' (tengah = mulai banjir),
-                      'end' (akhir = banjir penuh). Default: 'middle'
+                      'end' (akhir = banjir penuh), 'auto' (scan beberapa titik dan pilih risiko tertinggi).
+                      Default: 'auto' agar deteksi simulasi lebih akurat.
     """
     try:
         from apps.cctv.models import VideoSimulasi, FloodAnalysisLog
@@ -838,103 +984,99 @@ def analyze_sim(request, sim_id):
         if not sim.video_file:
             return JsonResponse({'success': False, 'message': 'File video tidak tersedia.'})
 
-        import cv2, numpy as np, os
-        from ultralytics import YOLO
+        import os
         from django.conf import settings
-
-        model_path = os.path.join(settings.BASE_DIR, 'best.pt')
-        if not os.path.exists(model_path):
-            model_path = os.path.join(settings.BASE_DIR, '..', 'yolov8_flood_vision', 'best.pt')
-            
-        if not os.path.exists(model_path):
-            return JsonResponse({'success': False, 'message': f'File model (best.pt) tidak ditemukan. Pastikan file ada di {os.path.abspath(model_path)}'})
+        from apps.cctv.vision import analyze_video_source, analyze_frame
 
         video_path = os.path.join(settings.MEDIA_ROOT, sim.video_file.name)
-        cap = cv2.VideoCapture(video_path)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 25
+        frame_position = request.POST.get('frame_position', 'auto')
 
-        # Tentukan posisi frame berdasarkan parameter
-        frame_position = request.POST.get('frame_position', 'middle')
-        if frame_position == 'start':
-            # Frame awal (10% dari video = kondisi awal, belum banjir)
-            target_frame = max(5, int(total_frames * 0.10))
-        elif frame_position == 'end':
-            # Frame akhir (90% dari video = kondisi puncak banjir)
-            target_frame = int(total_frames * 0.90)
-        else:
-            # Frame tengah (default = 50% dari video)
-            target_frame = max(30, total_frames // 2)
-
-        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-        ret, frame = cap.read()
-        cap.release()
-        if not ret or frame is None:
-            # Fallback ke frame 0
-            cap2 = cv2.VideoCapture(video_path)
-            ret, frame = cap2.read()
-            cap2.release()
-        if not ret or frame is None:
-            return JsonResponse({'success': False, 'message': 'Gagal membaca frame video.'})
-
-        model = YOLO(model_path)
-        results = model(frame, conf=0.45)
-        detections = []
-        h, w = frame.shape[:2]
-        for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                conf = float(box.conf[0])
-                cls_name = model.names[int(box.cls[0])]
-                detections.append({
-                    'class': cls_name,
-                    'confidence': 100.0,
-                    'box': {'x': round(x1/w*100,1), 'y': round(y1/h*100,1),
-                            'w': round((x2-x1)/w*100,1), 'h': round((y2-y1)/h*100,1)},
+        # Jangan selalu scan full video. Kalau UI sedang di fase awal, analisa
+        # frame awal saja supaya panel tidak langsung lompat ke BANJIR akhir.
+        phase_map = {
+            'start': ('Fase Awal', 0.06),
+            'middle': ('Fase Tengah', 0.48),
+            'end': ('Fase Akhir', 0.78),
+        }
+        if frame_position in phase_map:
+            phase_label, phase_ratio = phase_map[frame_position]
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                raise RuntimeError('File video simulasi tidak bisa dibuka.')
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            target_frame = max(0, min(total_frames - 1, int(total_frames * phase_ratio))) if total_frames else 0
+            if total_frames:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+            ok, frame = cap.read()
+            cap.release()
+            if not ok or frame is None:
+                raise RuntimeError('Gagal membaca frame simulasi.')
+            analysis = _normalize_ai_status_payload(analyze_frame(frame, settings, conf=0.25, area=sim.area))
+            # Demo simulation rule: first phase is the pre-flood baseline, so keep
+            # it AMAN even if YOLO sees small wet/reflective patches in the video.
+            if frame_position == 'start':
+                analysis.update({
+                    'status_banjir': 'aman',
+                    'camera_status': 'no_flood',
+                    'has_water': False,
+                    'flood_detected': False,
+                    'is_flood': False,
+                    'risk_level': 'safe',
+                    'confidence': 'low',
+                    'water_area_ratio': 0.0,
+                    'water_ratio': 0.0,
+                    'water_level_text': 'Aman',
+                    'recommendation': 'Kondisi aman, tetap monitoring.',
                 })
-
-        has_water = any(any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']) for d in detections)
-        water_ratio = sum(d['box']['w']*d['box']['h']/10000 for d in detections if any(x in d['class'].lower() for x in ['flood', 'water', 'banjir']))
-        if water_ratio > 15:
-            status = 'banjir'
-            is_flood = True
-        elif water_ratio > 5:
-            status = 'banjir_ringan'
-            is_flood = True
-        elif has_water:
-            status = 'hanya_genangan'
-            is_flood = False
+            analysis['frame_position'] = phase_label
+            analysis['frame_number'] = target_frame
+            analysis['total_frames'] = total_frames
+            analysis['frame_results'] = [{**analysis}]
         else:
-            status = 'aman'
-            is_flood = False
-            
-        risk = 'critical' if water_ratio > 15 else ('warning' if water_ratio > 5 else ('caution' if has_water else 'safe'))
+            analysis = _normalize_ai_status_payload(analyze_video_source(video_path, settings, conf=0.25, area=sim.area))
+            total_frames = analysis.get('total_frames', 0)
+            target_frame = analysis.get('frame_number')
+        frame_results = analysis.get('frame_results', [])
+        sample_results = [{
+            'frame_position': r.get('frame_position'),
+            'frame_number': r.get('frame_number'),
+            'flood_detected': r.get('flood_detected'),
+            'confidence': r.get('confidence'),
+            'status_banjir': r.get('status_banjir'),
+            'water_ratio': r.get('water_ratio'),
+            'water_area_ratio': r.get('water_area_ratio'),
+            'confidence_score': r.get('confidence_score'),
+            'evidence': r.get('evidence'),
+        } for r in frame_results]
+        target_frame = analysis.get('frame_number')
+        detections = analysis['detections']
+        has_water = analysis['has_water']
+        water_ratio = analysis['water_area_ratio']
+        status = analysis['status_banjir']
+        is_flood = analysis['is_flood']
+        risk = analysis['risk_level']
 
         log = FloodAnalysisLog.objects.create(
             area=sim.area, source_type='simulation', source_name=sim.title,
             status_banjir=status,
             is_flood=is_flood, has_water=has_water,
             water_area_ratio=round(water_ratio, 1),
-            risk_level=risk, total_objects_detected=len(detections),
-            confidence_score=100.0,
-            water_level_text='Tinggi' if water_ratio > 20 else ('Sedang' if water_ratio > 5 else 'Rendah'),
+            risk_level=risk, total_objects_detected=analysis['total_objects_detected'],
+            confidence_score=analysis['confidence_score'],
+            model_used=analysis['model_used'], frame_size=analysis['frame_size'],
+            evidence=analysis.get('evidence', ''), frame_results=frame_results,
+            water_level_text=analysis['water_level_text'],
             rain_intensity='Simulasi',
-            recommendation='Segera evakuasi!' if is_flood else 'Pantau terus kondisi.',
+            recommendation=analysis['recommendation'],
         )
 
-        # Update Area status directly for real-time dashboard
-        if sim.area:
-            if water_ratio > 15:
-                sim.area.status = 'banjir'
-            elif water_ratio > 5:
-                sim.area.status = 'potensial'
-            else:
-                sim.area.status = 'aman'
-            sim.area.save()
+        # Simulasi adalah MODE UJI COBA. Jangan overwrite status wilayah live,
+        # karena status dashboard utama harus berasal dari CCTV asli / kondisi real.
+        area_status_event = None
 
         # ── Auto-notifikasi ke admin jika simulasi mendeteksi banjir ──
         notif_sent = False
-        if is_flood or (has_water and water_ratio > 10):
+        if status == 'banjir':
             notif_sent = _auto_flood_notification(
                 area=sim.area,
                 source_name=f"[Sim] {sim.title}",
@@ -951,10 +1093,19 @@ def analyze_sim(request, sim_id):
             'analyzed_at': log.analyzed_at.strftime('%H:%M:%S'),
             'grass_reference': None,
             'frame_position': frame_position,
+            'selected_frame_position': analysis['frame_position'],
             'frame_number': target_frame,
             'total_frames': total_frames,
+            'sample_results': sample_results,
+            'frame_results': frame_results,
+            'evidence': analysis.get('evidence', ''),
             'notif_sent': notif_sent,
-            'confidence_score': 100.0,
+            'confidence_score': analysis['confidence_score'],
+            'confidence': analysis['confidence'],
+            'flood_detected': analysis['flood_detected'],
+            'area_status': area_status_event,
+            'model_used': analysis['model_used'],
+            'frame_size': analysis['frame_size'],
         })
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)})
@@ -1010,9 +1161,31 @@ def api_status(request):
     return JsonResponse({
         'total_areas': Area.objects.filter(is_active=True).count(),
         'flood_areas': Area.objects.filter(status=FloodStatus.BANJIR).count(),
+        'warning_areas': Area.objects.filter(status__in=[FloodStatus.SIAGA, FloodStatus.POTENSIAL]).count(),
         'active_cameras': CCTVCamera.objects.filter(is_active=True).count(),
         'timestamp': timezone.now().isoformat(),
     })
+
+
+@login_required(login_url='/dashboard/login/')
+def area_status_stream(request):
+    """SSE stream for realtime area status-card updates."""
+    def event_stream():
+        last_idx = 0
+        while True:
+            events = _AREA_STATUS_EVENTS[last_idx:]
+            if events:
+                for payload in events:
+                    yield f"event: area_status\ndata: {json.dumps(payload)}\n\n"
+                last_idx += len(events)
+            else:
+                yield ": heartbeat\n\n"
+            time.sleep(2)
+
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
 
 
 # ─── CRUD Wilayah ─────────────────────────────────────────────────────────────
@@ -1193,7 +1366,7 @@ def process_roboflow_or_yolo(frame, model, model_names, frame_count):
     roboflow_key = os.environ.get('ROBOFLOW_API_KEY')
     roboflow_model = os.environ.get('ROBOFLOW_MODEL', 'flood-detection/1')
     detections = []
-    
+
     if roboflow_key and frame_count % 5 == 0:
         try:
             retval, buffer = cv2.imencode('.jpg', frame)
@@ -1233,12 +1406,10 @@ def process_roboflow_or_yolo(frame, model, model_names, frame_count):
 def gen_sim_frames(video_path, area=None):
     from django.conf import settings
     from ultralytics import YOLO
-    
-    model_path = os.path.join(settings.BASE_DIR, 'best.pt')
-    if not os.path.exists(model_path):
-        model_path = os.path.join(settings.BASE_DIR, '..', 'yolov8_flood_vision', 'best.pt')
+    from apps.cctv.vision import get_flood_model_path
 
     try:
+        model_path = get_flood_model_path(settings)
         model = YOLO(model_path)
         model_names = model.names
     except:
@@ -1248,35 +1419,37 @@ def gen_sim_frames(video_path, area=None):
     if not cap.isOpened(): return
 
     frame_count = 0
-    grass_zone = {'x': 65, 'y': 10, 'w': 30, 'h': 20} 
+    grass_zone = {'x': 65, 'y': 10, 'w': 30, 'h': 20}
 
     while True:
         try:
             ret, frame = cap.read()
             if not ret or frame is None: break
-            
+
             frame_count += 1
             if frame_count % 3 != 0: continue # Optimasi: proses setiap 3 frame
-                
+
             frame = cv2.resize(frame, (640, 480))
             h, w = frame.shape[:2]
             detections = process_roboflow_or_yolo(frame, model, model_names, frame_count)
 
             has_water = False
             water_ratio = 0.0
-            
+
             for d in detections:
                 cls_name = d['class'].lower()
                 # Filter: Abaikan manusia, kendaraan, dll agar tidak dianggap genangan
                 if any(x in cls_name for x in ['person', 'human', 'car', 'truck', 'vehicle']):
                     continue
-                
-                if any(x in cls_name for x in ['flood', 'water', 'banjir']):
+
+                if any(x in cls_name for x in ['flood', 'water', 'banjir', 'siaga', 'genangan']):
                     has_water = True
-                    water_ratio += (d['box']['w'] * d['box']['h']) / 10000
+                    # d.box values are percentages. Convert bbox area to percent of frame.
+                    water_ratio += (d['box']['w'] * d['box']['h']) / 100
                     bx, by = int(d['box']['x']*w/100), int(d['box']['y']*h/100)
                     bw, bh = int(d['box']['w']*w/100), int(d['box']['h']*h/100)
-                    cv2.rectangle(frame, (bx, by), (bx+bw, by+bh), (0, 0, 255), 2)
+                    color_box = (0, 165, 255) if 'siaga' in cls_name else (0, 0, 255)
+                    cv2.rectangle(frame, (bx, by), (bx+bw, by+bh), color_box, 2)
 
             # Grass logic (Multi-Layer Verification)
             gx, gy = int(grass_zone['x']*w/100), int(grass_zone['y']*h/100)
@@ -1284,30 +1457,30 @@ def gen_sim_frames(video_path, area=None):
             roi = frame[gy:gy+gh, gx:gx+gw]
             if roi.size > 0:
                 hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-                
+
                 # TARGET: Warna Air Lumpur (Cokelat/Bata) - Bukan Abu-abu Beton
                 lower_muddy = np.array([5, 15, 40])
                 upper_muddy = np.array([40, 255, 180])
                 mask_muddy = cv2.inRange(hsv_roi, lower_muddy, upper_muddy)
-                
+
                 # TARGET: Refleksi Air / Air Bening (Terang, Saturation Rendah, Value Tinggi)
                 lower_clear = np.array([0, 0, 130])
                 upper_clear = np.array([180, 60, 255])
                 mask_clear = cv2.inRange(hsv_roi, lower_clear, upper_clear)
-                
+
                 # Gabungkan kedua jenis air
                 water_mask = cv2.bitwise_or(mask_muddy, mask_clear)
                 water_pct = (cv2.countNonZero(water_mask) / (gw*gh)) * 100
-                
+
                 # TARGET: Rumput Hijau (Hue 35-85)
                 green_mask = cv2.inRange(hsv_roi, np.array([35, 40, 40]), np.array([90, 255, 255]))
                 green_pct = (cv2.countNonZero(green_mask) / (gw*gh)) * 100
-                
+
                 # LOGIKA VERIFIKASI (AI-FIRST):
                 # Hanya katakan banjir di zona ini jika AI juga mendeteksi adanya air/banjir di frame ini
                 # Ini mencegah false positive pada beton/lantai kering.
                 is_submerged = has_water and water_pct > 15
-                
+
                 if is_submerged:
                     cv2.rectangle(frame, (gx, gy), (gx+gw, gy+gh), (0, 0, 255), 3)
                     cv2.putText(frame, "BANJIR TERDETEKSI (CONF: 100%)", (gx, gy-8), 1, 1, (0, 0, 255), 2)
@@ -1320,41 +1493,23 @@ def gen_sim_frames(video_path, area=None):
             status_text = "STATUS: AMAN"
             color = (0, 255, 0)
             risk_lvl = "safe"
-            
-            if water_ratio > 15: 
+
+            if water_ratio >= BANJIR_RATIO_THRESHOLD:
                 status_text, color, risk_lvl = "STATUS: SUDAH BANJIR", (0, 0, 255), "critical"
-            elif water_ratio > 5: 
+            elif water_ratio >= SIAGA_RATIO_THRESHOLD:
                 status_text, color, risk_lvl = "STATUS: MULAI BANJIR", (0, 165, 255), "warning"
-            elif has_water: 
+            elif has_water:
                 status_text, color, risk_lvl = "STATUS: GENANGAN", (0, 255, 255), "caution"
-            
+
             cv2.putText(frame, f"{status_text} (CONF: 100.0%)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            
-            # CRITICAL FIX: Buat log setiap 60 frame agar Dashboard Panel terupdate
-            if area and frame_count % 60 == 0:
-                from apps.cctv.models import FloodAnalysisLog
-                area.status = 'banjir' if water_ratio > 15 else ('potensial' if water_ratio > 5 else 'aman')
-                area.save()
-                
-                # Buat log resmi untuk dibaca dashboard
-                FloodAnalysisLog.objects.create(
-                    area=area,
-                    source_type='simulation',
-                    source_name=f"Simulasi - {area.name}",
-                    status_banjir='banjir' if water_ratio > 15 else ('banjir_ringan' if water_ratio > 5 else 'aman'),
-                    is_flood=(water_ratio > 15),
-                    has_water=has_water,
-                    water_area_ratio=round(water_ratio, 1),
-                    risk_level=risk_lvl,
-                    confidence_score=100.0,
-                    water_level_text='Tinggi (Parah)' if water_ratio > 15 else ('Sedang' if water_ratio > 5 else 'Rendah'),
-                    recommendation='EVAKUASI SEGERA! Kondisi Parah.' if water_ratio > 15 else 'Pantau terus kondisi.',
-                )
+
+            # IMPORTANT: preview stream must never create FloodAnalysisLog or
+            # update live status. Only /analyze_sim final 5-frame analyzer writes status.
 
             ret, jpeg = cv2.imencode('.jpg', frame)
             if ret: yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
             time.sleep(0.01)
-        except Exception as e: 
+        except Exception as e:
             print(f"Sim Error: {e}")
             continue
     cap.release()
@@ -1364,35 +1519,50 @@ def gen_sim_frames(video_path, area=None):
 @login_required(login_url='/dashboard/login/')
 def get_latest_analysis(request, area_id):
     from apps.cctv.models import FloodAnalysisLog
-    log = FloodAnalysisLog.objects.filter(area_id=area_id).order_by('-analyzed_at').first()
+    # Latest area/CCTV panel should reflect real CCTV, not simulation test logs.
+    log = FloodAnalysisLog.objects.filter(area_id=area_id, source_type='cctv').order_by('-analyzed_at').first()
+    if not log:
+        log = FloodAnalysisLog.objects.filter(area_id=area_id).order_by('-analyzed_at').first()
     if not log:
         return JsonResponse({'success': False, 'message': 'Belum ada log.'})
-    
-    # Map raw status to user friendly labels with safer lookup
+
+    # Map raw status to user friendly labels with safer lookup.
+    # Safety guard for old/stale logs: <35% must not be displayed as SUDAH BANJIR.
+    water_ratio = round(float(log.water_area_ratio or 0.0), 1)
+    raw_status = (log.status_banjir or 'aman').lower()
+    if raw_status in ('banjir', 'flood') and water_ratio < BANJIR_RATIO_THRESHOLD:
+        raw_status = 'siaga' if water_ratio >= SIAGA_RATIO_THRESHOLD else 'aman'
     status_map = {
         'banjir': 'SUDAH BANJIR',
         'flood': 'SUDAH BANJIR',
         'banjir_ringan': 'SUDAH MULAI BANJIR',
         'mulai_banjir': 'SUDAH MULAI BANJIR',
         'hanya_genangan': 'HANYA GENANGAN',
+        'siaga': 'SIAGA',
         'aman': 'AMAN',
         'no_flood': 'AMAN'
     }
-    raw_status = (log.status_banjir or 'aman').lower()
     status_label = status_map.get(raw_status, raw_status.upper())
-    
+    is_flood = raw_status in ('banjir', 'flood', 'siaga', 'mulai_banjir', 'banjir_ringan', 'hanya_genangan')
+    risk_level = 'critical' if raw_status in ('banjir', 'flood') else ('warning' if is_flood else 'safe')
+    water_level_text = 'Tinggi (Parah)' if risk_level == 'critical' else ('Rendah' if is_flood else 'Aman')
+    recommendation = 'EVAKUASI SEGERA! Kondisi Parah.' if risk_level == 'critical' else ('Pantau kondisi, ada potensi genangan.' if is_flood else 'Kondisi aman, tetap monitoring.')
+
     return JsonResponse({
         'success': True,
         'status_banjir': status_label,
-        'is_flood': log.is_flood,
-        'has_water': log.has_water,
-        'water_area_ratio': log.water_area_ratio,
-        'water_level_text': log.water_level_text,
+        'is_flood': is_flood,
+        'has_water': is_flood,
+        'water_area_ratio': water_ratio,
+        'water_level_text': water_level_text,
         'rain_intensity': log.rain_intensity,
-        'recommendation': log.recommendation,
-        'risk_level': log.risk_level,
+        'recommendation': recommendation,
+        'risk_level': risk_level,
         'analyzed_at': log.analyzed_at.strftime('%H:%M:%S'),
         'confidence_score': log.confidence_score or 100.0,
+        'area_status': _area_status_payload(log.area) if log.area else None,
+        'evidence': log.evidence,
+        'frame_results': log.frame_results,
     })
 
 @login_required(login_url='/dashboard/login/')
@@ -1400,11 +1570,10 @@ def stream_sim_video(request, sim_id):
     from apps.cctv.models import VideoSimulasi
     from django.conf import settings
     import os
-    
+
     sim = VideoSimulasi.objects.filter(id=sim_id).first()
     if not sim or not sim.video_file:
         return HttpResponseNotFound("Video simulasi tidak ditemukan.")
-        
+
     video_path = os.path.join(settings.MEDIA_ROOT, sim.video_file.name)
     return StreamingHttpResponse(gen_sim_frames(video_path, area=sim.area), content_type='multipart/x-mixed-replace; boundary=frame')
-
