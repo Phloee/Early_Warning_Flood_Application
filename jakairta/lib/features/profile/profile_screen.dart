@@ -1,12 +1,25 @@
 import 'package:flutter/material.dart';
 import '../../core/components/info_card.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/session.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final session = UserSession();
+
+  @override
   Widget build(BuildContext context) {
+    final String name = session.userData?['name'] ?? 'Guest User';
+    final String email = session.userData?['email'] ?? 'No Email';
+    final String phone = session.userData?['phone'] ?? 'No Phone';
+    final String initials = name.split(' ').where((e) => e.isNotEmpty).map((e) => e[0]).take(2).join().toUpperCase();
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -25,11 +38,20 @@ class ProfileScreen extends StatelessWidget {
                       shape: BoxShape.circle,
                       border: Border.all(color: AppColors.primary, width: 2),
                     ),
-                    child: const Icon(Icons.person, size: 50, color: AppColors.primary),
+                    child: Center(
+                      child: Text(
+                        initials.isEmpty ? 'U' : initials,
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Budi Santoso',
+                    name,
                     style: Theme.of(context).textTheme.displayMedium,
                   ),
                   const SizedBox(height: 4),
@@ -71,11 +93,11 @@ class ProfileScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  _buildListTile('Name', 'Budi Santoso', Icons.person_outline),
+                  _buildListTile('Name', name, Icons.person_outline),
                   const Divider(height: 1),
-                  _buildListTile('Email', 'budi.santoso@email.com (Verified)', Icons.email_outlined),
+                  _buildListTile('Email', email, Icons.email_outlined),
                   const Divider(height: 1),
-                  _buildListTile('Phone', '+62 812 3456 7890', Icons.phone_outlined),
+                  _buildListTile('Phone', phone, Icons.phone_outlined),
                 ],
               ),
             ),
@@ -94,14 +116,34 @@ class ProfileScreen extends StatelessWidget {
                   const Divider(height: 1),
                   _buildListTile('Language', 'English', Icons.language),
                   const Divider(height: 1),
-                  _buildListTile('Change Password', 'Last updated 3 months ago', Icons.lock_outline),
+                  _buildListTile('Change Password', 'Last updated recently', Icons.lock_outline),
                 ],
               ),
             ),
             const SizedBox(height: 32),
             // Logout
             TextButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Log Out'),
+                    content: const Text('Are you sure you want to log out?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () {
+                          session.logout();
+                          Navigator.pop(ctx);
+                          // Handle navigation to login if needed
+                          // Navigator.of(context).pushAndRemoveUntil(...)
+                        },
+                        child: const Text('Log Out', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+              },
               icon: const Icon(Icons.logout, color: AppColors.critical),
               label: const Text(
                 'Log Out',

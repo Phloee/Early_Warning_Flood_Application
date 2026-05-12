@@ -16,13 +16,35 @@ class _SimVideoPlayerState extends State<SimVideoPlayer> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize().then((_) {
+    String effectiveUrl = widget.url;
+    if (effectiveUrl.startsWith('http://')) {
+      effectiveUrl = effectiveUrl.replaceFirst('http://', 'https://');
+    }
+    
+    if (effectiveUrl.contains('balitower.co.id') && effectiveUrl.endsWith('embed.html')) {
+      effectiveUrl = effectiveUrl.replaceAll('embed.html', 'index.m3u8');
+    }
+
+    String referer = 'https://cctv.balitower.co.id/';
+    if (effectiveUrl.contains('balitower.co.id')) {
+      referer = effectiveUrl.replaceAll('index.m3u8', 'embed.html');
+    }
+    
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse(effectiveUrl),
+      httpHeaders: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': referer,
+      },
+    )..initialize().then((_) {
         if (mounted) {
           setState(() {});
           _controller.play();
           _controller.setLooping(true);
         }
+      }).catchError((error) {
+        debugPrint("Video error ($effectiveUrl): $error");
+        if (mounted) setState(() {});
       });
   }
   @override
@@ -32,6 +54,27 @@ class _SimVideoPlayerState extends State<SimVideoPlayer> {
   }
   @override
   Widget build(BuildContext context) {
+    if (_controller.value.hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 30),
+            const SizedBox(height: 8),
+            Text("Gagal memuat stream", 
+              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10)),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(widget.url, 
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 8)),
+            ),
+          ],
+        ),
+      );
+    }
     return _controller.value.isInitialized
         ? SizedBox.expand(child: FittedBox(fit: BoxFit.cover, child: SizedBox(width: _controller.value.size.width, height: _controller.value.size.height, child: VideoPlayer(_controller))))
         : const Center(child: CircularProgressIndicator(color: Colors.white));
@@ -160,10 +203,11 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
   final TextEditingController _regEmailCtrl = TextEditingController();
   final TextEditingController _regPassCtrl = TextEditingController();
   bool _isAuthLoading = false;
+  Map<String, dynamic>? _userData;
+  String? _authToken;
 
-  // CCTV & Simulasi States
+  // CCTV States
   List<dynamic> _cctvList = [];
-  List<dynamic> _simulasiList = [];
   bool _isLoadingMedia = false;
 
   List<dynamic> _areasList = [];
@@ -343,6 +387,11 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
       var res = await http.post(Uri.parse(baseUrl), headers: {'Content-Type': 'application/json'}, body: body);
           
       if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        setState(() {
+          _userData = data['user'];
+          _authToken = data['access'];
+        });
         navigate('home', clearHistory: true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Login failed: ${res.body}')));
@@ -391,14 +440,8 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
         final decoded = json.decode(cctvRes.body);
         setState(() => _cctvList = decoded is Map<String, dynamic> && decoded.containsKey('results') ? decoded['results'] : decoded);
       }
-
-      var simRes = await http.get(Uri.parse('${baseUrl}simulations/'));
-      if (simRes.statusCode == 200) {
-        final decoded = json.decode(simRes.body);
-        setState(() => _simulasiList = decoded is Map<String, dynamic> && decoded.containsKey('results') ? decoded['results'] : decoded);
-      }
     } catch (e) {
-      debugPrint("Gagal fetch CCTV/Simulasi: $e");
+      debugPrint("Gagal fetch CCTV: $e");
     } finally {
       if (mounted) setState(() => _isLoadingMedia = false);
     }
@@ -1601,6 +1644,11 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
   }
 
   Widget _buildProfile() {
+    final String name = _userData?['name'] ?? 'Guest User';
+    final String email = _userData?['email'] ?? 'No Email';
+    final String phone = _userData?['phone'] ?? 'No Phone';
+    final String initials = name.split(' ').where((e) => e.isNotEmpty).map((e) => e[0]).take(2).join().toUpperCase();
+
     return SingleChildScrollView(
       child: SafeArea(
         child: Padding(
@@ -1608,12 +1656,12 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
           child: Column(
             children: [
               const SizedBox(height: 16),
-              const CircleAvatar(
+              CircleAvatar(
                   radius: 50,
                   backgroundColor: Colors.lightBlueAccent,
-                  child: Text("BS", style: TextStyle(fontSize: 32, color: Colors.white, fontWeight: FontWeight.bold))),
+                  child: Text(initials.isEmpty ? "U" : initials, style: const TextStyle(fontSize: 32, color: Colors.white, fontWeight: FontWeight.bold))),
               const SizedBox(height: 16),
-              const Text("Budi Santoso", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1639,7 +1687,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                       _buildProfileItem(
                         icon: Icons.person_outline,
                         label: "FULL NAME",
-                        value: "Budi Santoso",
+                        value: name,
                         onTap: () => showDialog(
                             context: context,
                             builder: (ctx) => AlertDialog(
@@ -1652,7 +1700,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                       _buildProfileItem(
                         icon: Icons.mail_outline,
                         label: "EMAIL ADDRESS",
-                        value: "budi@example.com",
+                        value: email,
                         isEmail: true,
                         onTap: () => showDialog(
                             context: context,
@@ -1665,7 +1713,7 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                       _buildProfileItem(
                         icon: Icons.smartphone,
                         label: "PHONE NUMBER",
-                        value: "+62 812-3456-7890",
+                        value: phone,
                         onTap: () => showDialog(
                             context: context,
                             builder: (ctx) => AlertDialog(
@@ -1773,6 +1821,10 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                               TextButton(
                                   onPressed: () {
                                     Navigator.pop(ctx);
+                                    setState(() {
+                                      _userData = null;
+                                      _authToken = null;
+                                    });
                                     navigate('login', clearHistory: true);
                                   },
                                   child: const Text("Log Out", style: TextStyle(color: Colors.red))),
@@ -1793,7 +1845,16 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
     String areaStatus = areaData != null ? areaData['status'] : "aman";
     String wlColor = areaStatus == 'banjir' ? "critical" : (areaStatus == 'potensial' ? "warning" : "safe");
     Color statusColor = wlColor == 'critical' ? const Color(0xFFEF4444) : (wlColor == 'warning' ? Colors.orange : const Color(0xFF1DB954));
-    String siagaLevel = areaStatus == 'banjir' ? "SIAGA I" : (areaStatus == 'potensial' ? "SIAGA III" : "NORMAL");
+    
+    // Improved SIAGA mapping
+    String siagaLevel = "NORMAL";
+    if (areaStatus == 'banjir') {
+      siagaLevel = waterLevel > 200 ? "SIAGA I" : "SIAGA II";
+    } else if (areaStatus == 'potensial') {
+      siagaLevel = "SIAGA III";
+    } else {
+      siagaLevel = "SIAGA IV";
+    }
 
     double rainfall = 0.0;
     String weatherStatus = "NORMAL";
@@ -1876,23 +1937,23 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                     children: [
                       if (_isLoadingMedia)
                         const Center(child: CircularProgressIndicator())
-                      else if (_cctvList.isEmpty && _simulasiList.isEmpty)
-                        const Center(child: Text("No CCTV or Simulation available", style: TextStyle(color: Colors.grey)))
+                      else if (_cctvList.where((c) => c['area_name'] == _selectedLoc).isEmpty)
+                        const Center(child: Text("No CCTV available for this area", style: TextStyle(color: Colors.grey)))
                       else
                         SizedBox(
                           height: 180,
                           child: ListView(
                             scrollDirection: Axis.horizontal,
                             children: [
-                              ..._cctvList.map((cctv) {
+                              ..._cctvList.where((c) => c['area_name'] == _selectedLoc).map((cctv) {
                                 bool isFlood = cctv['detection_result'] == 'flood';
                                 final streamUrl = cctv['stream_url'] as String? ?? '';
                                 return GestureDetector(
-                                  onTap: streamUrl.isNotEmpty
-                                      ? () => ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('CCTV stream: $streamUrl')),
-                                          )
-                                      : null,
+                                  onTap: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('CCTV URL: $streamUrl')),
+                                    );
+                                  },
                                   child: Container(
                                     width: 240,
                                     margin: const EdgeInsets.only(right: 12),
@@ -1905,26 +1966,18 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                                     child: Stack(
                                       children: [
                                         Positioned.fill(
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Icon(Icons.videocam,
-                                                color: streamUrl.isNotEmpty ? Colors.white60 : Colors.grey,
-                                                size: 36),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                streamUrl.isNotEmpty ? 'Tekan untuk\nLihat Live CCTV' : 'Tidak ada\nstream URL',
-                                                textAlign: TextAlign.center,
-                                                style: TextStyle(
-                                                  color: streamUrl.isNotEmpty ? Colors.white60 : Colors.grey,
-                                                  fontSize: 11),
-                                              ),
-                                              if (streamUrl.isNotEmpty) ...[
-                                                const SizedBox(height: 6),
-                                                const Icon(Icons.open_in_new, color: Colors.white38, size: 14),
-                                              ],
-                                            ],
-                                          ),
+                                          child: streamUrl.isNotEmpty
+                                              ? SimVideoPlayer(url: streamUrl)
+                                              : Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    const Icon(Icons.videocam_off, color: Colors.grey, size: 36),
+                                                    const SizedBox(height: 6),
+                                                    const Text('Tidak ada\nstream URL',
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(color: Colors.grey, fontSize: 11)),
+                                                  ],
+                                                ),
                                         ),
                                         Positioned(
                                           top: 8, left: 8,
@@ -1952,45 +2005,17 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                                           ),
                                         ),
                                         Positioned(
-                                          bottom: 8, left: 8, right: 8,
-                                          child: Text(cctv['name'] ?? '',
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(color: Colors.white70, fontSize: 11, backgroundColor: Colors.black54)),
+                                          bottom: 0, left: 0, right: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            color: Colors.black54,
+                                            child: Text(cctv['name'] ?? '',
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: Colors.white, fontSize: 11)),
+                                          ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                );
-                              }),
-                              
-                              ..._simulasiList.map((sim) {
-                                return Container(
-                                  width: 240,
-                                  margin: const EdgeInsets.only(right: 12),
-                                  decoration: BoxDecoration(color: Colors.blueGrey.shade900, borderRadius: BorderRadius.circular(14)),
-                                  clipBehavior: Clip.hardEdge,
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      if (sim['video_file'] != null && sim['video_file'].toString().isNotEmpty)
-                                        Positioned.fill(child: SimVideoPlayer(url: sim['video_file']))
-                                      else
-                                        Icon(Icons.movie, color: Colors.white.withOpacity(0.7), size: 56),
-                                      Positioned(
-                                        top: 10,
-                                        left: 10,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(6)),
-                                          child: const Text("SIMULASI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        bottom: 8,
-                                        left: 10,
-                                        child: Text(sim['title'] ?? "Simulasi Video", style: const TextStyle(color: Colors.white, fontSize: 12, backgroundColor: Colors.black54)),
-                                      )
-                                    ],
                                   ),
                                 );
                               }),
@@ -2177,6 +2202,24 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
                         ),
                       ],
                       const SizedBox(height: 24),
+                      if (_weatherForecast.isNotEmpty) ...[
+                        const Text("Rainfall Trend (Next 12h)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 12),
+                        Container(
+                          height: 160,
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                          decoration: BoxDecoration(
+                            color: widget.isDark ? Theme.of(context).cardColor : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: widget.isDark ? Colors.grey.shade800 : Colors.grey.shade300, width: 0.5),
+                          ),
+                          child: CustomPaint(
+                            painter: BarChartPainter(primaryColor, criticalColor, _weatherForecast),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                       const Text("Nearby Safe Zones", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                       const SizedBox(height: 12),
                       ListTile(
@@ -2354,38 +2397,65 @@ class _JakairtaMainContainerState extends State<JakairtaMainContainer> with Tick
 class BarChartPainter extends CustomPainter {
   final Color primary;
   final Color critical;
+  final List<dynamic> forecastData;
 
-  BarChartPainter(this.primary, this.critical);
+  BarChartPainter(this.primary, this.critical, this.forecastData);
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (forecastData.isEmpty) return;
+
     final paint = Paint()..style = PaintingStyle.fill;
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
 
-    final bars = [
-      {"label": "00:00", "height": 0.3, "color": primary},
-      {"label": "08:00", "height": 0.5, "color": primary},
-      {"label": "16:00", "height": 0.7, "color": primary},
-      {"label": "NOW", "height": 0.9, "color": critical},
-    ];
-
+    // Filter only 4 items for the chart to keep it clean
+    final displayItems = forecastData.take(4).toList();
+    
     double barWidth = 40;
-    double spacing = (size.width - (barWidth * 4)) / 3;
+    double spacing = (size.width - (barWidth * displayItems.length)) / (displayItems.length - 1);
+    
+    // Find max rainfall for scaling
+    double maxRain = 1.0;
+    for (var item in displayItems) {
+      double r = (item['rainfall'] as num).toDouble();
+      if (r > maxRain) maxRain = r;
+    }
 
-    for (int i = 0; i < bars.length; i++) {
+    for (int i = 0; i < displayItems.length; i++) {
+      final item = displayItems[i];
       double x = i * (barWidth + spacing);
-      double h = size.height * (bars[i]["height"] as double);
+      
+      double rainfallValue = (item['rainfall'] as num).toDouble();
+      // Calculate height ratio (min 0.1 for visibility if 0)
+      double heightRatio = maxRain > 0 ? (rainfallValue / maxRain) : 0.1;
+      if (heightRatio < 0.1) heightRatio = 0.1;
+      
+      double h = (size.height - 30) * heightRatio;
       double y = size.height - h - 20;
 
-      paint.color = bars[i]["color"] as Color;
+      final type = item['type'] as String? ?? 'safe';
+      paint.color = type == 'critical' ? critical : (type == 'warning' ? Colors.orange : primary);
+      
       canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x, y, barWidth, h), const Radius.circular(8)), paint);
 
-      textPainter.text = TextSpan(text: bars[i]["label"] as String, style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold));
+      // Label (Time)
+      textPainter.text = TextSpan(
+        text: item['time'] ?? '', 
+        style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)
+      );
       textPainter.layout();
       textPainter.paint(canvas, Offset(x + (barWidth - textPainter.width) / 2, size.height - 15));
+      
+      // Value (mm)
+      textPainter.text = TextSpan(
+        text: "${rainfallValue.toStringAsFixed(1)}", 
+        style: TextStyle(color: paint.color, fontSize: 9, fontWeight: FontWeight.bold)
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(x + (barWidth - textPainter.width) / 2, y - 15));
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant BarChartPainter oldDelegate) => oldDelegate.forecastData != forecastData;
 }

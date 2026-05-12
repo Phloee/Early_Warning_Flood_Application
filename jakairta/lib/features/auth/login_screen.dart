@@ -1,12 +1,65 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../core/components/custom_button.dart';
 import '../../core/components/input_field.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/session.dart';
 import 'sign_up_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailCtrl = TextEditingController();
+  final TextEditingController _passCtrl = TextEditingController();
+  bool _isLoading = false;
+
+  Future<void> _handleLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:8080/api/auth/login/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': _emailCtrl.text.trim(),
+          'password': _passCtrl.text,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final session = UserSession();
+        session.userData = data['user'];
+        session.token = data['access'];
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Login failed: ${response.body}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Connection error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,12 +102,14 @@ class LoginScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const InputField(
+              InputField(
+                controller: _emailCtrl,
                 hintText: 'Email',
                 prefixIcon: Icons.email_outlined,
               ),
               const SizedBox(height: 16),
-              const InputField(
+              InputField(
+                controller: _passCtrl,
                 hintText: 'Password',
                 prefixIcon: Icons.lock_outline,
                 obscureText: true,
@@ -64,7 +119,7 @@ class LoginScreen extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () {},
-                  child: Text(
+                  child: const Text(
                     'Forgot Password?',
                     style: TextStyle(
                       color: AppColors.primary,
@@ -75,12 +130,8 @@ class LoginScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               CustomButton(
-                text: 'Dive in!',
-                onPressed: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-                  );
-                },
+                text: _isLoading ? 'Loading...' : 'Dive in!',
+                onPressed: _isLoading ? null : _handleLogin,
               ),
               const SizedBox(height: 24),
               Row(
@@ -96,7 +147,7 @@ class LoginScreen extends StatelessWidget {
                         MaterialPageRoute(builder: (_) => const SignUpScreen()),
                       );
                     },
-                    child: Text(
+                    child: const Text(
                       'Sign Up',
                       style: TextStyle(
                         color: AppColors.primary,
